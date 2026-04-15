@@ -67,7 +67,7 @@ run.finish()
 
 monitor = inv.monitors.create_simple(
     name="Dangerous output",
-    evaluator={"type": "keyword", "field": "output", "value": "dangerous"},
+    evaluator={"type": "keyword", "field": "output", "keywords": ["dangerous"]},
     severity="high",
     review=True,
 )
@@ -77,6 +77,8 @@ inv.monitors.evaluate(monitor["id"])
 signals = inv.signals.list()
 reviews = inv.reviews.list()
 ```
+
+Python `review=True` maps to backend `creates_review=True`.
 
 ## Modules
 
@@ -102,4 +104,3 @@ Useful legacy files:
 Port only the run/session ergonomics and HTTP resource ideas.
 
 Do not port old advanced modules until the MVP dry run passes.
-
