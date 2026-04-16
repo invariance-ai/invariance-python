@@ -61,10 +61,10 @@ def test_node_write_path_and_body():
     # Use Run.node() which is the public API
     from invariance.runs import Run
 
-    run = Run(inv._http, {"id": "sess_1", "name": "demo", "status": "open"})
+    run = Run(inv._http, {"id": "sess_1", "agent_id": "a_1", "name": "demo", "status": "open"})
     result = run.node(action_type="tool_call", input={"a": 1}, output={"b": 2})
     assert seen["method"] == "POST"
-    assert seen["path"] == "/v1/trace/events"
+    assert seen["path"] == "/v1/nodes"
     assert '"session_id":"sess_1"' in seen["body"].replace(" ", "")
     assert '"action_type":"tool_call"' in seen["body"].replace(" ", "")
     assert result["id"] == "n_1"
