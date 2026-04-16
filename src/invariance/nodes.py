@@ -13,12 +13,10 @@ class NodesResource:
     def write(
         self,
         session_id: str,
-        events: list[dict[str, Any]],
+        nodes: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
-        body = {
-            "events": [{"session_id": session_id, **e} for e in events],
-        }
-        res = self._http.post("/v1/trace/events", json=body)
+        body = [{"session_id": session_id, **n} for n in nodes]
+        res = self._http.post("/v1/nodes", json=body)
         return res["data"]
 
     def list(
