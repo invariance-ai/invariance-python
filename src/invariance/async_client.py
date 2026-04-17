@@ -1,0 +1,418 @@
+"""Async mirror of Invariance, Run, Step, and @trace.
+
+Mirrors the sync surface: ``async with inv.runs.start() as run:`` and
+``async with run.step(...) as s:``. Uses :class:`asyncio.Lock` per run to
+serialize writes so two concurrent tasks inside the same run cannot
+produce a branched chain (the backend has no conflict detection).
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextvars
+import functools
+import inspect
+import secrets
+import time
+import traceback
+from typing import Any, Callable, TypeVar
+from urllib.parse import urlencode
+
+import httpx
+
+from .client import InvarianceApiError
+from .crypto import hash_node_payload, sign_ed25519
+
+DEFAULT_API_URL = "https://api.invariance.dev"
+BATCH_MAX = 100
+
+
+def _random_node_id() -> str:
+    return f"node_{secrets.token_hex(8)}"
+
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)
+
+
+_current_async_step: contextvars.ContextVar["AsyncStep | None"] = contextvars.ContextVar(
+    "invariance_current_async_step", default=None
+)
+
+
+class AsyncHttpClient:
+    def __init__(self, base_url: str, api_key: str) -> None:
+        self._client = httpx.AsyncClient(
+            base_url=base_url,
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=30.0,
+        )
+
+    async def request(self, method: str, path: str, *, json: Any | None = None) -> Any:
+        res = await self._client.request(method, path, json=json)
+        if res.status_code >= 400:
+            body: dict[str, Any] = {}
+            try:
+                body = res.json()
+            except Exception:
+                pass
+            err = body.get("error", {})
+            raise InvarianceApiError(
+                status=res.status_code,
+                code=err.get("code", "unknown"),
+                message=err.get("message", f"HTTP {res.status_code}"),
+                details=err.get("details"),
+                request_id=err.get("request_id"),
+            )
+        return res.json()
+
+    async def get(self, path: str) -> Any:
+        return await self.request("GET", path)
+
+    async def post(self, path: str, json: Any | None = None) -> Any:
+        return await self.request("POST", path, json=json)
+
+    async def patch(self, path: str, json: Any | None = None) -> Any:
+        return await self.request("PATCH", path, json=json)
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
+
+class AsyncStep:
+    def __init__(
+        self,
+        run: "AsyncRun",
+        action_type: str,
+        *,
+        input: Any | None = None,
+        output: Any | None = None,
+        metadata: dict[str, Any] | None = None,
+        custom_fields: dict[str, Any] | None = None,
+    ) -> None:
+        self._run = run
+        self.action_type = action_type
+        self.input = input
+        self.output = output
+        self.error: Any | None = None
+        self.metadata = dict(metadata) if metadata else None
+        self.custom_fields = dict(custom_fields) if custom_fields else None
+        self.id = _random_node_id()
+        self._parent_id: str | None = None
+        self._start_ms: int | None = None
+        self._token: contextvars.Token | None = None
+
+    async def __aenter__(self) -> "AsyncStep":
+        parent = _current_async_step.get()
+        self._parent_id = parent.id if parent is not None else None
+        self._start_ms = _now_ms()
+        self._token = _current_async_step.set(self)
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> bool:
+        try:
+            if exc_val is not None and self.error is None:
+                self.error = {
+                    "type": exc_type.__name__ if exc_type else "Exception",
+                    "message": str(exc_val),
+                    "traceback": "".join(traceback.format_exception(exc_type, exc_val, exc_tb)),
+                }
+            duration_ms = _now_ms() - (self._start_ms or _now_ms())
+            await self._run._emit(
+                id=self.id,
+                action_type=self.action_type,
+                input=self.input,
+                output=self.output,
+                error=self.error,
+                metadata=self.metadata,
+                custom_fields=self.custom_fields,
+                parent_id=self._parent_id,
+                timestamp=self._start_ms,
+                duration_ms=duration_ms,
+            )
+        finally:
+            if self._token is not None:
+                _current_async_step.reset(self._token)
+                self._token = None
+        return False
+
+
+class AsyncRun:
+    def __init__(
+        self,
+        http: AsyncHttpClient,
+        session: dict[str, Any],
+        signing_key: str | None = None,
+        buffered: bool = True,
+    ) -> None:
+        self._http = http
+        self._session = session
+        self._signing_key = signing_key
+        self._last_hash: str | None = None
+        self._buffered = buffered
+        self._buffer: list[dict[str, Any]] = []
+        self._lock = asyncio.Lock()
+        self._closed = False
+
+    @property
+    def run_id(self) -> str:
+        return self._session["id"]
+
+    @property
+    def name(self) -> str:
+        return self._session.get("name", "")
+
+    @property
+    def status(self) -> str:
+        return self._session.get("status", "open")
+
+    async def __aenter__(self) -> "AsyncRun":
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> bool:
+        try:
+            await self.flush()
+        finally:
+            if not self._closed:
+                if exc_val is not None:
+                    await self.fail(error=str(exc_val))
+                else:
+                    await self.finish()
+        return False
+
+    def step(
+        self,
+        action_type: str,
+        *,
+        input: Any | None = None,
+        output: Any | None = None,
+        metadata: dict[str, Any] | None = None,
+        custom_fields: dict[str, Any] | None = None,
+    ) -> AsyncStep:
+        return AsyncStep(
+            self,
+            action_type,
+            input=input,
+            output=output,
+            metadata=metadata,
+            custom_fields=custom_fields,
+        )
+
+    def _build_node_body(
+        self,
+        *,
+        id: str,
+        action_type: str,
+        input: Any | None,
+        output: Any | None,
+        error: Any | None,
+        metadata: dict[str, Any] | None,
+        custom_fields: dict[str, Any] | None,
+        parent_id: str | None,
+        timestamp: int | None,
+        duration_ms: int | None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "run_id": self.run_id,
+            "id": id,
+            "action_type": action_type,
+        }
+        if input is not None:
+            body["input"] = input
+        if output is not None:
+            body["output"] = output
+        if error is not None:
+            body["error"] = error
+        if metadata is not None:
+            body["metadata"] = metadata
+        if custom_fields is not None:
+            body["custom_fields"] = custom_fields
+        if parent_id is not None:
+            body["parent_id"] = parent_id
+        if duration_ms is not None:
+            body["duration_ms"] = duration_ms
+
+        if self._signing_key:
+            ts = timestamp if timestamp is not None else _now_ms()
+            prev = [] if self._last_hash is None else [self._last_hash]
+            payload = {
+                "id": id,
+                "run_id": self.run_id,
+                "agent_id": self._session["agent_id"],
+                "parent_id": parent_id,
+                "action_type": action_type,
+                "input": input,
+                "output": output,
+                "error": error,
+                "metadata": metadata if metadata is not None else {},
+                "custom_fields": custom_fields if custom_fields is not None else {},
+                "timestamp": ts,
+                "duration_ms": duration_ms,
+                "previous_hashes": prev,
+            }
+            body["timestamp"] = ts
+            body["previous_hashes"] = prev
+            body["signature"] = sign_ed25519(hash_node_payload(payload), self._signing_key)
+            self._last_hash = hash_node_payload(payload)
+        elif timestamp is not None:
+            body["timestamp"] = timestamp
+        return body
+
+    async def _emit(
+        self,
+        *,
+        id: str,
+        action_type: str,
+        input: Any | None,
+        output: Any | None,
+        error: Any | None,
+        metadata: dict[str, Any] | None,
+        custom_fields: dict[str, Any] | None,
+        parent_id: str | None,
+        timestamp: int | None,
+        duration_ms: int | None,
+    ) -> None:
+        async with self._lock:
+            body = self._build_node_body(
+                id=id,
+                action_type=action_type,
+                input=input,
+                output=output,
+                error=error,
+                metadata=metadata,
+                custom_fields=custom_fields,
+                parent_id=parent_id,
+                timestamp=timestamp,
+                duration_ms=duration_ms,
+            )
+            self._buffer.append(body)
+            if not self._buffered or len(self._buffer) >= BATCH_MAX:
+                await self._flush_locked()
+
+    async def flush(self) -> None:
+        async with self._lock:
+            await self._flush_locked()
+
+    async def _flush_locked(self) -> None:
+        while self._buffer:
+            chunk = self._buffer[:BATCH_MAX]
+            self._buffer = self._buffer[BATCH_MAX:]
+            res = await self._http.post("/v1/nodes", json=chunk)
+            nodes = res["data"]
+            if nodes:
+                last = nodes[-1]
+                if "hash" in last and not self._signing_key:
+                    self._last_hash = last["hash"]
+
+    async def verify(self) -> dict[str, Any]:
+        return await self._http.get(f"/v1/runs/{self.run_id}/verify")
+
+    async def finish(self) -> dict[str, Any]:
+        await self.flush()
+        res = await self._http.patch(f"/v1/runs/{self.run_id}", json={"status": "completed"})
+        self._closed = True
+        return res["run"]
+
+    async def fail(self, error: str | None = None) -> dict[str, Any]:
+        await self.flush()
+        body: dict[str, Any] = {"status": "failed"}
+        if error:
+            body["metadata"] = {"error": error}
+        res = await self._http.patch(f"/v1/runs/{self.run_id}", json=body)
+        self._closed = True
+        return res["run"]
+
+
+class AsyncRunsResource:
+    def __init__(self, http: AsyncHttpClient, signing_key: str | None = None) -> None:
+        self._http = http
+        self._signing_key = signing_key
+
+    async def start(
+        self,
+        name: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        *,
+        signing_key: str | None = None,
+        buffered: bool = True,
+    ) -> AsyncRun:
+        body: dict[str, Any] = {}
+        if name is not None:
+            body["name"] = name
+        if metadata is not None:
+            body["metadata"] = metadata
+        res = await self._http.post("/v1/runs", json=body)
+        return AsyncRun(self._http, res["run"], signing_key or self._signing_key, buffered=buffered)
+
+    async def list(self, *, cursor: str | None = None, limit: int | None = None) -> dict[str, Any]:
+        params: dict[str, str] = {}
+        if cursor:
+            params["cursor"] = cursor
+        if limit:
+            params["limit"] = str(limit)
+        qs = f"?{urlencode(params)}" if params else ""
+        return await self._http.get(f"/v1/runs{qs}")
+
+    async def get(self, id: str) -> AsyncRun:
+        res = await self._http.get(f"/v1/runs/{id}")
+        return AsyncRun(self._http, res["run"], self._signing_key)
+
+
+class AsyncInvariance:
+    def __init__(
+        self,
+        api_key: str,
+        api_url: str | None = None,
+        *,
+        signing_key: str | None = None,
+    ) -> None:
+        if not api_key:
+            raise ValueError("api_key is required")
+        self._http = AsyncHttpClient(api_url or DEFAULT_API_URL, api_key)
+        self.runs = AsyncRunsResource(self._http, signing_key)
+
+    async def aclose(self) -> None:
+        await self._http.aclose()
+
+    async def __aenter__(self) -> "AsyncInvariance":
+        return self
+
+    async def __aexit__(self, *args: object) -> None:
+        await self.aclose()
+
+
+F = TypeVar("F", bound=Callable[..., Any])
+
+
+def async_trace(
+    run: AsyncRun,
+    action_type: str | None = None,
+    *,
+    capture_args: bool = True,
+    capture_return: bool = True,
+) -> Callable[[F], F]:
+    """Async counterpart of :func:`invariance.trace`. Wraps a coroutine fn."""
+
+    def decorator(fn: F) -> F:
+        label = action_type or fn.__qualname__
+        sig = inspect.signature(fn)
+
+        @functools.wraps(fn)
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
+            input_payload: Any = None
+            if capture_args:
+                try:
+                    bound = sig.bind(*args, **kwargs)
+                    bound.apply_defaults()
+                    input_payload = dict(bound.arguments)
+                except TypeError:
+                    input_payload = {"args": args, "kwargs": kwargs}
+            async with run.step(label, input=input_payload) as s:
+                result = await fn(*args, **kwargs)
+                if capture_return:
+                    s.output = result
+                return result
+
+        return wrapper  # type: ignore[return-value]
+
+    return decorator
