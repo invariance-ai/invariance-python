@@ -23,7 +23,7 @@ import httpx
 from .client import InvarianceApiError
 from .crypto import hash_node_payload, sign_ed25519
 
-DEFAULT_API_URL = "https://api.invariance.dev"
+DEFAULT_API_URL = "https://api.useinvariance.com"
 BATCH_MAX = 100
 
 
