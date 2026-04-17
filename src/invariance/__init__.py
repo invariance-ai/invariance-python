@@ -1,9 +1,17 @@
 from __future__ import annotations
 
 from .client import HttpClient, InvarianceApiError
-from .runs import Run, RunsResource
+from .runs import Run, RunsResource, Step
 from .nodes import NodesResource
 from .agents import AgentsResource
+from .trace import trace
+from .async_client import (
+    AsyncInvariance,
+    AsyncRun,
+    AsyncRunsResource,
+    AsyncStep,
+    async_trace,
+)
 from .crypto import (
     generate_keypair,
     get_public_key,
@@ -21,6 +29,13 @@ __all__ = [
     "InvarianceApiError",
     "Run",
     "RunsResource",
+    "Step",
+    "trace",
+    "AsyncInvariance",
+    "AsyncRun",
+    "AsyncRunsResource",
+    "AsyncStep",
+    "async_trace",
     "NodesResource",
     "AgentsResource",
     "generate_keypair",

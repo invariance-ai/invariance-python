@@ -12,16 +12,16 @@ class NodesResource:
 
     def write(
         self,
-        session_id: str,
+        run_id: str,
         nodes: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
-        body = [{"session_id": session_id, **n} for n in nodes]
+        body = [{"run_id": run_id, **n} for n in nodes]
         res = self._http.post("/v1/nodes", json=body)
         return res["data"]
 
     def list(
         self,
-        session_id: str,
+        run_id: str,
         *,
         cursor: str | None = None,
         limit: int | None = None,
@@ -32,4 +32,4 @@ class NodesResource:
         if limit:
             params["limit"] = str(limit)
         qs = f"?{urlencode(params)}" if params else ""
-        return self._http.get(f"/v1/sessions/{session_id}/nodes{qs}")
+        return self._http.get(f"/v1/runs/{run_id}/nodes{qs}")

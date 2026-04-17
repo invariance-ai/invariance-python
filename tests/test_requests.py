@@ -2,7 +2,6 @@ import httpx
 import pytest
 
 from invariance import Invariance, InvarianceApiError
-from invariance.client import HttpClient
 
 
 def _client_with_handler(handler):
@@ -37,15 +36,15 @@ def test_runs_start_path_and_body():
         seen["body"] = request.content.decode() or "{}"
         return httpx.Response(
             200,
-            json={"session": {"id": "sess_1", "name": "demo", "status": "open"}},
+            json={"run": {"id": "run_1", "agent_id": "a_1", "name": "demo", "status": "open"}},
         )
 
     inv = _client_with_handler(handler)
     run = inv.runs.start(name="demo")
     assert seen["method"] == "POST"
-    assert seen["path"] == "/v1/sessions"
+    assert seen["path"] == "/v1/runs"
     assert '"name":"demo"' in seen["body"].replace(" ", "")
-    assert run.session_id == "sess_1"
+    assert run.run_id == "run_1"
 
 
 def test_node_write_path_and_body():
@@ -55,17 +54,16 @@ def test_node_write_path_and_body():
         seen["method"] = request.method
         seen["path"] = request.url.path
         seen["body"] = request.content.decode()
-        return httpx.Response(200, json={"data": [{"id": "n_1", "action_type": "tool_call"}]})
+        return httpx.Response(200, json={"data": [{"id": "n_1", "action_type": "tool_call", "hash": "h1"}]})
 
     inv = _client_with_handler(handler)
-    # Use Run.node() which is the public API
     from invariance.runs import Run
 
-    run = Run(inv._http, {"id": "sess_1", "agent_id": "a_1", "name": "demo", "status": "open"})
+    run = Run(inv._http, {"id": "run_1", "agent_id": "a_1", "name": "demo", "status": "open"}, buffered=False)
     result = run.node(action_type="tool_call", input={"a": 1}, output={"b": 2})
     assert seen["method"] == "POST"
     assert seen["path"] == "/v1/nodes"
-    assert '"session_id":"sess_1"' in seen["body"].replace(" ", "")
+    assert '"run_id":"run_1"' in seen["body"].replace(" ", "")
     assert '"action_type":"tool_call"' in seen["body"].replace(" ", "")
     assert result["id"] == "n_1"
 
