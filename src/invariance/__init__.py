@@ -6,7 +6,9 @@ from .nodes import NodesResource
 from .agents import AgentsResource
 from .trace import trace
 from .async_client import (
+    AsyncAgentsResource,
     AsyncInvariance,
+    AsyncNodesResource,
     AsyncRun,
     AsyncRunsResource,
     AsyncStep,
@@ -35,6 +37,8 @@ __all__ = [
     "AsyncRun",
     "AsyncRunsResource",
     "AsyncStep",
+    "AsyncNodesResource",
+    "AsyncAgentsResource",
     "async_trace",
     "NodesResource",
     "AgentsResource",

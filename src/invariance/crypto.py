@@ -48,7 +48,7 @@ def sha256_hex(s: str) -> str:
 def hash_node_payload(payload: dict[str, Any]) -> str:
     """Hash a NodeHashPayload dict.
 
-    Expected keys: id, session_id, agent_id, parent_id, action_type,
+    Expected keys: id, run_id, agent_id, parent_id, action_type,
     input, output, error, metadata, custom_fields, timestamp,
     duration_ms, previous_hashes.
     """

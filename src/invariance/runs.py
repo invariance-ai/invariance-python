@@ -1,27 +1,16 @@
 from __future__ import annotations
 
 import contextvars
-import secrets
 import threading
-import time
 import traceback
-from typing import Any, Iterator
+from typing import Any
 from urllib.parse import urlencode
-from contextlib import contextmanager
 
 from .client import HttpClient
-from .crypto import hash_node_payload, sign_ed25519
+from ._internal import build_node_body, now_ms as _now_ms, random_node_id as _random_node_id
 
 
 BATCH_MAX = 100
-
-
-def _random_node_id() -> str:
-    return f"node_{secrets.token_hex(8)}"
-
-
-def _now_ms() -> int:
-    return int(time.time() * 1000)
 
 
 # Context var tracking the currently-active Step in this sync context.
@@ -141,11 +130,6 @@ class Run:
     def run_id(self) -> str:
         return self._session["id"]
 
-    # Back-compat alias
-    @property
-    def session_id(self) -> str:
-        return self._session["id"]
-
     @property
     def name(self) -> str:
         return self._session.get("name", "")
@@ -208,7 +192,11 @@ class Run:
         duration_ms: int | None,
     ) -> None:
         with self._lock:
-            body = self._build_node_body(
+            body, self._last_hash = build_node_body(
+                run_id=self.run_id,
+                agent_id=self._session["agent_id"],
+                last_hash=self._last_hash,
+                signing_key=self._signing_key,
                 id=id,
                 action_type=action_type,
                 input=input,
@@ -223,67 +211,6 @@ class Run:
             self._buffer.append(body)
             if not self._buffered or len(self._buffer) >= BATCH_MAX:
                 self._flush_locked()
-
-    def _build_node_body(
-        self,
-        *,
-        id: str,
-        action_type: str,
-        input: Any | None,
-        output: Any | None,
-        error: Any | None,
-        metadata: dict[str, Any] | None,
-        custom_fields: dict[str, Any] | None,
-        parent_id: str | None,
-        timestamp: int | None,
-        duration_ms: int | None,
-    ) -> dict[str, Any]:
-        body: dict[str, Any] = {
-            "run_id": self.run_id,
-            "id": id,
-            "action_type": action_type,
-        }
-        if input is not None:
-            body["input"] = input
-        if output is not None:
-            body["output"] = output
-        if error is not None:
-            body["error"] = error
-        if metadata is not None:
-            body["metadata"] = metadata
-        if custom_fields is not None:
-            body["custom_fields"] = custom_fields
-        if parent_id is not None:
-            body["parent_id"] = parent_id
-        if duration_ms is not None:
-            body["duration_ms"] = duration_ms
-
-        if self._signing_key:
-            ts = timestamp if timestamp is not None else _now_ms()
-            prev = [] if self._last_hash is None else [self._last_hash]
-            payload = {
-                "id": id,
-                "run_id": self.run_id,
-                "agent_id": self._session["agent_id"],
-                "parent_id": parent_id,
-                "action_type": action_type,
-                "input": input,
-                "output": output,
-                "error": error,
-                "metadata": metadata if metadata is not None else {},
-                "custom_fields": custom_fields if custom_fields is not None else {},
-                "timestamp": ts,
-                "duration_ms": duration_ms,
-                "previous_hashes": prev,
-            }
-            body["timestamp"] = ts
-            body["previous_hashes"] = prev
-            body["signature"] = sign_ed25519(hash_node_payload(payload), self._signing_key)
-            # Pre-compute our own tail hash so the next signed node chains correctly.
-            self._last_hash = hash_node_payload(payload)
-        elif timestamp is not None:
-            body["timestamp"] = timestamp
-        return body
 
     def flush(self) -> None:
         with self._lock:
@@ -329,7 +256,11 @@ class Run:
         with self._lock:
             # Flush any buffered nodes first so ordering/chaining is preserved.
             self._flush_locked()
-            body = self._build_node_body(
+            body, self._last_hash = build_node_body(
+                run_id=self.run_id,
+                agent_id=self._session["agent_id"],
+                last_hash=self._last_hash,
+                signing_key=self._signing_key,
                 id=_random_node_id(),
                 action_type=action_type,
                 input=input,
