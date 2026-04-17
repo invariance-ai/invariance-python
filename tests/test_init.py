@@ -9,7 +9,7 @@ def test_requires_api_key():
 
 def test_default_api_url():
     inv = Invariance(api_key="inv_test_abc")
-    assert inv._http._client.base_url == "https://api.invariance.dev"
+    assert str(inv._http._client.base_url) == "https://api.useinvariance.com"
     inv.close()
 
 

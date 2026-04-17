@@ -22,7 +22,7 @@ def test_stable_stringify_null_value():
 def test_hash_node_payload_key_order_invariant():
     a = {
         "id": "node_1",
-        "session_id": "s",
+        "run_id": "r",
         "agent_id": "a",
         "parent_id": None,
         "action_type": "t",
@@ -43,7 +43,7 @@ def test_hash_node_payload_key_order_invariant():
 def test_hash_changes_with_custom_fields():
     base = {
         "id": "n",
-        "session_id": "s",
+        "run_id": "r",
         "agent_id": "a",
         "parent_id": None,
         "action_type": "t",

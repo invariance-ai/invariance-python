@@ -12,8 +12,6 @@ import asyncio
 import contextvars
 import functools
 import inspect
-import secrets
-import time
 import traceback
 from typing import Any, Callable, TypeVar
 from urllib.parse import urlencode
@@ -21,18 +19,10 @@ from urllib.parse import urlencode
 import httpx
 
 from .client import InvarianceApiError
-from .crypto import hash_node_payload, sign_ed25519
+from ._internal import build_node_body, now_ms as _now_ms, random_node_id as _random_node_id
 
 DEFAULT_API_URL = "https://api.useinvariance.com"
 BATCH_MAX = 100
-
-
-def _random_node_id() -> str:
-    return f"node_{secrets.token_hex(8)}"
-
-
-def _now_ms() -> int:
-    return int(time.time() * 1000)
 
 
 _current_async_step: contextvars.ContextVar["AsyncStep | None"] = contextvars.ContextVar(
@@ -198,66 +188,6 @@ class AsyncRun:
             custom_fields=custom_fields,
         )
 
-    def _build_node_body(
-        self,
-        *,
-        id: str,
-        action_type: str,
-        input: Any | None,
-        output: Any | None,
-        error: Any | None,
-        metadata: dict[str, Any] | None,
-        custom_fields: dict[str, Any] | None,
-        parent_id: str | None,
-        timestamp: int | None,
-        duration_ms: int | None,
-    ) -> dict[str, Any]:
-        body: dict[str, Any] = {
-            "run_id": self.run_id,
-            "id": id,
-            "action_type": action_type,
-        }
-        if input is not None:
-            body["input"] = input
-        if output is not None:
-            body["output"] = output
-        if error is not None:
-            body["error"] = error
-        if metadata is not None:
-            body["metadata"] = metadata
-        if custom_fields is not None:
-            body["custom_fields"] = custom_fields
-        if parent_id is not None:
-            body["parent_id"] = parent_id
-        if duration_ms is not None:
-            body["duration_ms"] = duration_ms
-
-        if self._signing_key:
-            ts = timestamp if timestamp is not None else _now_ms()
-            prev = [] if self._last_hash is None else [self._last_hash]
-            payload = {
-                "id": id,
-                "run_id": self.run_id,
-                "agent_id": self._session["agent_id"],
-                "parent_id": parent_id,
-                "action_type": action_type,
-                "input": input,
-                "output": output,
-                "error": error,
-                "metadata": metadata if metadata is not None else {},
-                "custom_fields": custom_fields if custom_fields is not None else {},
-                "timestamp": ts,
-                "duration_ms": duration_ms,
-                "previous_hashes": prev,
-            }
-            body["timestamp"] = ts
-            body["previous_hashes"] = prev
-            body["signature"] = sign_ed25519(hash_node_payload(payload), self._signing_key)
-            self._last_hash = hash_node_payload(payload)
-        elif timestamp is not None:
-            body["timestamp"] = timestamp
-        return body
-
     async def _emit(
         self,
         *,
@@ -273,7 +203,11 @@ class AsyncRun:
         duration_ms: int | None,
     ) -> None:
         async with self._lock:
-            body = self._build_node_body(
+            body, self._last_hash = build_node_body(
+                run_id=self.run_id,
+                agent_id=self._session["agent_id"],
+                last_hash=self._last_hash,
+                signing_key=self._signing_key,
                 id=id,
                 action_type=action_type,
                 input=input,
@@ -358,6 +292,49 @@ class AsyncRunsResource:
         return AsyncRun(self._http, res["run"], self._signing_key)
 
 
+class AsyncNodesResource:
+    def __init__(self, http: AsyncHttpClient) -> None:
+        self._http = http
+
+    async def write(
+        self,
+        run_id: str,
+        nodes: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        body = [{"run_id": run_id, **n} for n in nodes]
+        res = await self._http.post("/v1/nodes", json=body)
+        return res["data"]
+
+    async def list(
+        self,
+        run_id: str,
+        *,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        params: dict[str, str] = {}
+        if cursor:
+            params["cursor"] = cursor
+        if limit:
+            params["limit"] = str(limit)
+        qs = f"?{urlencode(params)}" if params else ""
+        return await self._http.get(f"/v1/runs/{run_id}/nodes{qs}")
+
+
+class AsyncAgentsResource:
+    def __init__(self, http: AsyncHttpClient) -> None:
+        self._http = http
+
+    async def me(self) -> dict[str, Any]:
+        return await self._http.get("/v1/agents/me")
+
+    async def set_public_key(self, public_key: str) -> dict[str, Any]:
+        res = await self._http.request(
+            "PUT", "/v1/agents/me/key", json={"public_key": public_key}
+        )
+        return res["agent"]
+
+
 class AsyncInvariance:
     def __init__(
         self,
@@ -370,6 +347,8 @@ class AsyncInvariance:
             raise ValueError("api_key is required")
         self._http = AsyncHttpClient(api_url or DEFAULT_API_URL, api_key)
         self.runs = AsyncRunsResource(self._http, signing_key)
+        self.nodes = AsyncNodesResource(self._http)
+        self.agents = AsyncAgentsResource(self._http)
 
     async def aclose(self) -> None:
         await self._http.aclose()
