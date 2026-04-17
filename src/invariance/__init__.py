@@ -22,7 +22,7 @@ from .crypto import (
     sha256_hex,
 )
 
-DEFAULT_API_URL = "https://api.invariance.dev"
+DEFAULT_API_URL = "https://api.useinvariance.com"
 
 __all__ = [
     "Invariance",
