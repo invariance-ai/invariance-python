@@ -117,6 +117,53 @@ def test_run_signal_auto_attaches_last_node_id():
     assert sig["id"] == "signal_1"
 
 
+def test_signals_list_parses_page():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/signals"
+        assert request.url.params.get("limit") == "5"
+        return httpx.Response(
+            200,
+            json={
+                "data": [{"id": "signal_1", "severity": "high", "title": "t"}],
+                "next_cursor": "cur_xyz",
+            },
+        )
+
+    inv = _client_with_handler(handler)
+    page = inv.signals.list(limit=5)
+    assert page["next_cursor"] == "cur_xyz"
+    assert page["data"][0]["id"] == "signal_1"
+
+
+def test_signals_get_returns_entity():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/signals/signal_42"
+        return httpx.Response(
+            200, json={"signal": {"id": "signal_42", "severity": "low", "title": "t"}}
+        )
+
+    inv = _client_with_handler(handler)
+    got = inv.signals.get("signal_42")
+    assert got["id"] == "signal_42"
+
+
+def test_signals_acknowledge_patches():
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        return httpx.Response(
+            200, json={"signal": {"id": "signal_9", "status": "acknowledged"}}
+        )
+
+    inv = _client_with_handler(handler)
+    got = inv.signals.acknowledge("signal_9")
+    assert captured["method"] == "PATCH"
+    assert captured["path"] == "/v1/signals/signal_9/acknowledge"
+    assert got["status"] == "acknowledged"
+
+
 def test_monitor_emit_signal_compiles_signal_type():
     d = compile_monitor(
         MonitorSpec(
@@ -126,5 +173,5 @@ def test_monitor_emit_signal_compiles_signal_type():
             do=action.emit_signal(severity="high", title="Danger", type="dangerous"),
         )
     )
-    assert d["actions"][0]["signal_type"] == "dangerous"
-    assert d["signal"]["type"] == "dangerous"
+    assert d["signal_type"] == "dangerous"
+    assert d["severity"] == "high"

@@ -137,3 +137,36 @@ def test_trace_decorator_captures_args_and_return():
     assert nodes[0]["action_type"] == "lookup"
     assert nodes[0]["input"] == {"x": 3, "y": 4}
     assert nodes[0]["output"] == 7
+
+
+def test_step_forwards_node_type_to_api():
+    inv, calls = _inv_with_capture()
+    from invariance import define_node_type
+
+    BillingCharge = define_node_type("billing_charge")
+    with inv.runs.start() as run:
+        with run.step("tool.use", type=BillingCharge.type) as s:
+            s.output = {"amount": 100}
+
+    posts = [c for c in calls if c["path"] == "/v1/nodes"]
+    nodes = posts[0]["body"] if isinstance(posts[0]["body"], list) else [posts[0]["body"]]
+    assert nodes[0]["action_type"] == "tool.use"
+    assert nodes[0]["type"] == "billing_charge"
+
+
+def test_trace_decorator_respects_capture_flags():
+    inv, calls = _inv_with_capture()
+    with inv.runs.start() as run:
+
+        @trace(run, action_type="quiet", capture_args=False, capture_return=False)
+        def quiet(x: int) -> int:
+            return x * 2
+
+        assert quiet(5) == 10
+
+    posts = [c for c in calls if c["path"] == "/v1/nodes"]
+    nodes = posts[0]["body"] if isinstance(posts[0]["body"], list) else [posts[0]["body"]]
+    n = nodes[0]
+    assert n["action_type"] == "quiet"
+    assert n.get("input") is None
+    assert n.get("output") is None

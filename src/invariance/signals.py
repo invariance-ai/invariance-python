@@ -18,12 +18,11 @@ Users declare a ``SignalType`` once and emit instances from inside a run
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any
 from urllib.parse import urlencode
 
+from ._types import Severity
 from .client import HttpClient
-
-Severity = Literal["info", "low", "medium", "high", "critical"]
 
 
 @dataclass(frozen=True)

@@ -12,11 +12,8 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 from urllib.parse import urlencode
 
+from ._types import NumericOp, Severity
 from .client import HttpClient
-
-
-Severity = Literal["info", "low", "medium", "high", "critical"]
-NumericOp = Literal["gt", "gte", "lt", "lte"]
 
 
 # ── Spec dataclasses ───────────────────────────────────────────────────────
@@ -187,170 +184,92 @@ class action:
 # ── Compilation ────────────────────────────────────────────────────────────
 
 
-def _compile_on(o: dict[str, Any]) -> dict[str, Any]:
-    scope = o["_scope"]
-    if scope == "session":
-        filters = []
-        if o.get("id"):
-            filters.append({"field": "session_id", "operator": "eq", "value": o["id"]})
-        target_match: dict[str, Any] = {"mode": "direct", "scope": "session", "filters": filters}
-        if o.get("tags"):
-            target_match["labels"] = o["tags"]
-        return {
-            "target": "session",
-            "target_match": target_match,
-            "trigger": {"type": "event", "source": "session"},
-        }
-    if scope == "run":
-        filters = []
-        if o.get("id"):
-            filters.append({"field": "run_id", "operator": "eq", "value": o["id"]})
-        if o.get("agent_id"):
-            filters.append({"field": "agent_id", "operator": "eq", "value": o["agent_id"]})
-        return {
-            "target": "trace_node",
-            "target_match": {"mode": "contains", "scope": "run", "filters": filters},
-            "trigger": {"type": "event", "source": "trace_node"},
-        }
-    if scope == "agent":
-        return {
-            "target": "trace_node",
-            "target_match": {
-                "mode": "contains",
-                "scope": "agent",
-                "filters": [{"field": "agent_id", "operator": "eq", "value": o["id"]}],
-            },
-            "trigger": {"type": "event", "source": "trace_node"},
-        }
-    if scope == "node":
-        filters = []
-        if o.get("type"):
-            filters.append({"field": "type", "operator": "eq", "value": o["type"]})
-        if o.get("action_type"):
-            filters.append({"field": "action_type", "operator": "eq", "value": o["action_type"]})
-        if o.get("agent_id"):
-            filters.append({"field": "agent_id", "operator": "eq", "value": o["agent_id"]})
-        return {
-            "target": "trace_node",
-            "target_match": {"mode": "direct", "scope": "node", "filters": filters},
-            "trigger": {"type": "event", "source": "trace_node"},
-        }
-    # batch
-    return {
-        "target": "signal",
-        "target_match": {"mode": "contains", "scope": "batch"},
-        "trigger": {"type": "schedule", "cadence_minutes": o["window_minutes"]},
-    }
+_OP_MAP: dict[str, str] = {"gt": ">", "gte": ">=", "lt": "<", "lte": "<="}
 
 
-def _compile_rule(r: dict[str, Any]) -> dict[str, Any]:
-    kind = r["_kind"]
-    if kind == "field_equals":
-        return {"kind": "field_match", "field": r["field"], "operator": "eq", "value": r["value"]}
+def _compile_rule_to_evaluator(r: dict[str, Any]) -> dict[str, Any]:
+    """Map a single SDK rule to a backend ``MonitorEvaluator``.
+
+    Backend supports exactly two evaluator types: ``keyword`` (substring
+    match) and ``threshold`` (numeric comparison). Other rule kinds
+    (``exists``, ``frequency``, LLM/human/code judges, rule composition)
+    are out of scope for the MVP backend and raise ``NotImplementedError``.
+    """
+    kind = r.get("_kind")
     if kind == "field_contains":
-        return {"kind": "field_match", "field": r["field"], "operator": "contains", "value": r["value"]}
-    if kind == "numeric":
-        return {"kind": "numeric_threshold", "field": r["field"], "operator": r["op"], "value": r["value"]}
-    if kind == "exists":
-        return {"kind": "exists", "field": r["field"], "exists": r["exists"]}
-    if kind == "frequency":
         return {
-            "kind": "frequency",
+            "type": "keyword",
             "field": r["field"],
-            "operator": "eq",
-            "value": r["value"],
-            "rate": {"per_minutes": r["per_minutes"], "operator": r["op"], "value": r["threshold"]},
-            "window_minutes": r["window_minutes"],
+            "keywords": [r["value"]],
+            "case_sensitive": False,
         }
+    if kind == "field_equals":
+        return {
+            "type": "keyword",
+            "field": r["field"],
+            "keywords": [str(r["value"])],
+            "case_sensitive": True,
+        }
+    if kind == "numeric":
+        return {
+            "type": "threshold",
+            "field": r["field"],
+            "operator": _OP_MAP[r["op"]],
+            "value": r["value"],
+        }
+    if kind in {"exists", "frequency"}:
+        raise NotImplementedError(
+            f"rule.{kind} is not supported by the current backend evaluator"
+        )
+    if kind in {"judge_llm", "judge_human", "code"}:
+        raise NotImplementedError(
+            f"evaluator.{kind} is not supported by the current backend evaluator"
+        )
     raise ValueError(f"unknown rule kind: {kind}")
 
 
-def _compile_evaluator(e: dict[str, Any]) -> dict[str, Any]:
-    kind = e["_kind"]
-    if kind == "judge_llm":
-        return {
-            "type": "judge_llm",
-            "model": e["model"],
-            "rubric": e["rubric"],
-            "output_schema": e["output_schema"],
-            "max_tokens": e["max_tokens"],
-        }
-    if kind == "judge_human":
-        return {"type": "judge_human", "queue": e["queue"], "instructions": e["instructions"], "notify": e["notify"]}
-    if kind == "code":
-        return {"type": "code", "runtime": e["runtime"], "entrypoint": "main", "inline_script": e["inline_script"]}
-    raise ValueError(f"unknown evaluator kind: {kind}")
-
-
-def _compile_action(a: dict[str, Any]) -> dict[str, Any]:
-    kind = a["_kind"]
-    if kind == "create_finding":
-        out: dict[str, Any] = {"type": "create_finding", "severity": a["severity"], "title": a["title"], "message": a["message"] or a["title"]}
-        if a.get("type"):
-            out["signal_type"] = a["type"]
-        return out
-    if kind == "emit_signal":
-        out = {"type": "emit_signal", "severity": a["severity"], "title": a["title"], "message": a["message"] or a["title"]}
-        if a.get("type"):
-            out["signal_type"] = a["type"]
-        return out
-    if kind == "notify":
-        return {"type": "notify", "channel": a["channel"], "target": a["target"]}
-    if kind == "mark":
-        return {"type": "mark_object", "label": a["label"]}
-    if kind == "webhook":
-        return {"type": "webhook", "url": a["url"], "method": a["method"], "headers": a["headers"]}
-    raise ValueError(f"unknown action kind: {kind}")
-
-
-_EVALUATOR_KINDS = {"judge_llm", "judge_human", "code"}
-
-
 def compile_monitor(spec: MonitorSpec) -> dict[str, Any]:
-    target_bits = _compile_on(spec.on)
-    do_list = spec.do if isinstance(spec.do, list) else [spec.do]
-    actions = [_compile_action(a) for a in do_list]
+    """Compile a :class:`MonitorSpec` to a backend ``CreateMonitorRequest``.
 
-    match: Literal["all", "any"] = "all"
-    rules: list[dict[str, Any]] = []
-    evaluator_def: dict[str, Any] | None = None
+    Returned shape matches ``@invariance/api-types`` ``CreateMonitorRequest``:
+    ``{name, description?, evaluator, severity, signal_type?, creates_review?, schedule?}``.
 
+    Unsupported DSL constructs raise ``NotImplementedError`` with an
+    explicit message so callers can see exactly which piece isn't wired
+    through yet.
+    """
     w = spec.when
-    if "_kind" in w and w["_kind"] in _EVALUATOR_KINDS:
-        evaluator_def = _compile_evaluator(w)
-    elif "_kind" in w:
-        rules = [_compile_rule(w)]
-    elif "_match" in w:
-        match = w["_match"]
-        rules = [_compile_rule(r) for r in w["rules"]]
-    else:
-        raise ValueError("invalid 'when' expression")
+    if "_match" in w:
+        raise NotImplementedError(
+            "rule.any_/all_ composition is not supported by the current backend evaluator"
+        )
+    evaluator_body = _compile_rule_to_evaluator(w)
 
-    signal_action = next((a for a in actions if a["type"] in ("create_finding", "emit_signal")), None)
-    if signal_action:
-        signal: dict[str, Any] = {
-            "title": signal_action["title"],
-            "message": signal_action["message"],
-            "severity": signal_action["severity"],
-        }
-        if "signal_type" in signal_action:
-            signal["type"] = signal_action["signal_type"]
-    else:
-        signal = {"title": spec.name, "message": spec.description or spec.name, "severity": spec.severity}
+    do_list = spec.do if isinstance(spec.do, list) else [spec.do]
+    signal_action = next(
+        (a for a in do_list if a.get("_kind") in {"emit_signal", "create_finding"}), None
+    )
+    signal_type: str | None = signal_action["type"] if signal_action and signal_action.get("type") else None
+    creates_review = any(a.get("_kind") == "create_finding" for a in do_list)
 
-    definition: dict[str, Any] = {
-        "version": 1,
-        "target": target_bits["target"],
-        "target_match": target_bits["target_match"],
-        "match": match,
-        "rules": rules,
-        "actions": actions,
-        "signal": signal,
-        "trigger": target_bits["trigger"],
+    for a in do_list:
+        if a.get("_kind") in {"notify", "mark", "webhook"}:
+            raise NotImplementedError(
+                f"action.{a['_kind']} is not supported by the current backend"
+            )
+
+    body: dict[str, Any] = {
+        "name": spec.name,
+        "evaluator": evaluator_body,
+        "severity": signal_action["severity"] if signal_action else spec.severity,
     }
-    if evaluator_def is not None:
-        definition["evaluator"] = evaluator_def
-    return definition
+    if spec.description is not None:
+        body["description"] = spec.description
+    if signal_type is not None:
+        body["signal_type"] = signal_type
+    if creates_review:
+        body["creates_review"] = True
+    return body
 
 
 # ── Resources ──────────────────────────────────────────────────────────────
@@ -361,8 +280,7 @@ class MonitorsResource:
         self._http = http
 
     def create(self, spec: MonitorSpec) -> dict[str, Any]:
-        body = {"name": spec.name, "definition": compile_monitor(spec), "severity": spec.severity}
-        res = self._http.post("/v1/monitors", json=body)
+        res = self._http.post("/v1/monitors", json=compile_monitor(spec))
         return res["monitor"]
 
     def get(self, id: str) -> dict[str, Any]:

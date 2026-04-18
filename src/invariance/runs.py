@@ -6,6 +6,7 @@ import traceback
 from typing import Any
 from urllib.parse import urlencode
 
+from ._types import Severity
 from .client import HttpClient
 from ._internal import build_node_body, now_ms as _now_ms, random_node_id as _random_node_id
 from .signals import SignalsResource
@@ -298,7 +299,7 @@ class Run:
         self,
         spec: dict[str, Any] | None = None,
         *,
-        severity: str | None = None,
+        severity: Severity | None = None,
         title: str | None = None,
         message: str | None = None,
         type: str | None = None,
