@@ -15,6 +15,7 @@ from .monitors import (
     action,
 )
 from .node_types import NodeType, define_node_type
+from .signals import SignalType, SignalsResource, define_signal_type
 from .async_client import (
     AsyncAgentsResource,
     AsyncInvariance,
@@ -22,6 +23,7 @@ from .async_client import (
     AsyncNodesResource,
     AsyncRun,
     AsyncRunsResource,
+    AsyncSignalsResource,
     AsyncStep,
     async_trace,
 )
@@ -51,6 +53,7 @@ __all__ = [
     "AsyncNodesResource",
     "AsyncAgentsResource",
     "AsyncMonitorsResource",
+    "AsyncSignalsResource",
     "async_trace",
     "NodesResource",
     "AgentsResource",
@@ -63,6 +66,9 @@ __all__ = [
     "action",
     "NodeType",
     "define_node_type",
+    "SignalType",
+    "SignalsResource",
+    "define_signal_type",
     "generate_keypair",
     "get_public_key",
     "sign_ed25519",
@@ -88,6 +94,7 @@ class Invariance:
         self.nodes = NodesResource(self._http)
         self.agents = AgentsResource(self._http)
         self.monitors = MonitorsResource(self._http)
+        self.signals = SignalsResource(self._http)
 
     def close(self) -> None:
         self._http.close()

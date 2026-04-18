@@ -143,6 +143,7 @@ class AsyncRun:
         self._session = session
         self._signing_key = signing_key
         self._last_hash: str | None = None
+        self._last_node_id: str | None = None
         self._buffered = buffered
         self._buffer: list[dict[str, Any]] = []
         self._lock = asyncio.Lock()
@@ -228,6 +229,7 @@ class AsyncRun:
                 duration_ms=duration_ms,
             )
             self._buffer.append(body)
+            self._last_node_id = body["id"]
             if not self._buffered or len(self._buffer) >= BATCH_MAX:
                 await self._flush_locked()
 
@@ -245,6 +247,48 @@ class AsyncRun:
                 last = nodes[-1]
                 if "hash" in last and not self._signing_key:
                     self._last_hash = last["hash"]
+
+    async def signal(
+        self,
+        spec: dict[str, Any] | None = None,
+        *,
+        severity: str | None = None,
+        title: str | None = None,
+        message: str | None = None,
+        type: str | None = None,
+        data: Any | None = None,
+        node_id: str | None = None,
+        run_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Async mirror of :meth:`Run.signal`."""
+        await self.flush()
+        merged: dict[str, Any] = dict(spec) if spec else {}
+        if severity is not None:
+            merged["severity"] = severity
+        if title is not None:
+            merged["title"] = title
+        if message is not None:
+            merged["message"] = message
+        if type is not None:
+            merged["type"] = type
+        if data is not None:
+            merged["data"] = data
+        if node_id is not None:
+            merged["node_id"] = node_id
+        if run_id is not None:
+            merged["run_id"] = run_id
+        if "severity" not in merged or "title" not in merged:
+            raise ValueError("signal() requires severity and title (directly or via spec)")
+        merged.setdefault("run_id", self.run_id)
+        if "node_id" not in merged and self._last_node_id is not None:
+            merged["node_id"] = self._last_node_id
+
+        body: dict[str, Any] = {"severity": merged["severity"], "title": merged["title"]}
+        for key in ("message", "type", "data", "node_id", "run_id"):
+            if key in merged:
+                body[key] = merged[key]
+        res = await self._http.post("/v1/signals", json=body)
+        return res["signal"]
 
     async def verify(self) -> dict[str, Any]:
         return await self._http.get(f"/v1/runs/{self.run_id}/verify")
@@ -398,6 +442,55 @@ class AsyncMonitorsResource:
         return await self.update(id, status="active")
 
 
+class AsyncSignalsResource:
+    def __init__(self, http: AsyncHttpClient) -> None:
+        self._http = http
+
+    async def emit(
+        self,
+        *,
+        severity: str,
+        title: str,
+        message: str | None = None,
+        type: str | None = None,
+        data: Any | None = None,
+        node_id: str | None = None,
+        run_id: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"severity": severity, "title": title}
+        if message is not None:
+            body["message"] = message
+        if type is not None:
+            body["type"] = type
+        if data is not None:
+            body["data"] = data
+        if node_id is not None:
+            body["node_id"] = node_id
+        if run_id is not None:
+            body["run_id"] = run_id
+        res = await self._http.post("/v1/signals", json=body)
+        return res["signal"]
+
+    async def list(
+        self, *, cursor: str | None = None, limit: int | None = None
+    ) -> dict[str, Any]:
+        params: dict[str, str] = {}
+        if cursor:
+            params["cursor"] = cursor
+        if limit:
+            params["limit"] = str(limit)
+        qs = f"?{urlencode(params)}" if params else ""
+        return await self._http.get(f"/v1/signals{qs}")
+
+    async def get(self, id: str) -> dict[str, Any]:
+        res = await self._http.get(f"/v1/signals/{id}")
+        return res["signal"]
+
+    async def acknowledge(self, id: str) -> dict[str, Any]:
+        res = await self._http.patch(f"/v1/signals/{id}/acknowledge")
+        return res["signal"]
+
+
 class AsyncInvariance:
     def __init__(
         self,
@@ -413,6 +506,7 @@ class AsyncInvariance:
         self.nodes = AsyncNodesResource(self._http)
         self.agents = AsyncAgentsResource(self._http)
         self.monitors = AsyncMonitorsResource(self._http)
+        self.signals = AsyncSignalsResource(self._http)
 
     async def aclose(self) -> None:
         await self._http.aclose()

@@ -8,6 +8,7 @@ from urllib.parse import urlencode
 
 from .client import HttpClient
 from ._internal import build_node_body, now_ms as _now_ms, random_node_id as _random_node_id
+from .signals import SignalsResource
 
 
 BATCH_MAX = 100
@@ -124,10 +125,12 @@ class Run:
         self._session = session
         self._signing_key = signing_key
         self._last_hash: str | None = None
+        self._last_node_id: str | None = None
         self._buffered = buffered
         self._buffer: list[dict[str, Any]] = []
         self._lock = threading.Lock()
         self._closed = False
+        self._signals = SignalsResource(http)
 
     @property
     def run_id(self) -> str:
@@ -216,6 +219,7 @@ class Run:
                 duration_ms=duration_ms,
             )
             self._buffer.append(body)
+            self._last_node_id = body["id"]
             if not self._buffered or len(self._buffer) >= BATCH_MAX:
                 self._flush_locked()
 
@@ -285,7 +289,53 @@ class Run:
             node = res["data"][0]
             if "hash" in node and not self._signing_key:
                 self._last_hash = node["hash"]
+            self._last_node_id = node.get("id", self._last_node_id)
             return node
+
+    # ── Signals ────────────────────────────────────────────────────────
+
+    def signal(
+        self,
+        spec: dict[str, Any] | None = None,
+        *,
+        severity: str | None = None,
+        title: str | None = None,
+        message: str | None = None,
+        type: str | None = None,
+        data: Any | None = None,
+        node_id: str | None = None,
+        run_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Emit a signal attached to the current run (and last node by default).
+
+        ``spec`` accepts the output of :meth:`SignalType.signal` for the
+        ergonomic ``run.signal(DangerousOutput.signal(data=...))`` form.
+        """
+        self.flush()
+        merged: dict[str, Any] = dict(spec) if spec else {}
+        if severity is not None:
+            merged["severity"] = severity
+        if title is not None:
+            merged["title"] = title
+        if message is not None:
+            merged["message"] = message
+        if type is not None:
+            merged["type"] = type
+        if data is not None:
+            merged["data"] = data
+        if node_id is not None:
+            merged["node_id"] = node_id
+        if run_id is not None:
+            merged["run_id"] = run_id
+
+        if "severity" not in merged or "title" not in merged:
+            raise ValueError("signal() requires severity and title (directly or via spec)")
+
+        merged.setdefault("run_id", self.run_id)
+        if "node_id" not in merged and self._last_node_id is not None:
+            merged["node_id"] = self._last_node_id
+
+        return self._signals.emit(**merged)
 
     # ── Lifecycle ──────────────────────────────────────────────────────
 

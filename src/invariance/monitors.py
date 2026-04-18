@@ -143,12 +143,28 @@ class evaluator:
 
 class action:
     @staticmethod
-    def create_finding(*, severity: Severity, title: str, message: str | None = None) -> dict[str, Any]:
-        return {"_kind": "create_finding", "severity": severity, "title": title, "message": message}
+    def create_finding(
+        *, severity: Severity, title: str, message: str | None = None, type: str | None = None
+    ) -> dict[str, Any]:
+        return {
+            "_kind": "create_finding",
+            "severity": severity,
+            "title": title,
+            "message": message,
+            "type": type,
+        }
 
     @staticmethod
-    def emit_signal(*, severity: Severity, title: str, message: str | None = None) -> dict[str, Any]:
-        return {"_kind": "emit_signal", "severity": severity, "title": title, "message": message}
+    def emit_signal(
+        *, severity: Severity, title: str, message: str | None = None, type: str | None = None
+    ) -> dict[str, Any]:
+        return {
+            "_kind": "emit_signal",
+            "severity": severity,
+            "title": title,
+            "message": message,
+            "type": type,
+        }
 
     @staticmethod
     def notify(channel: Literal["email", "slack", "webhook", "dashboard"], target: str) -> dict[str, Any]:
@@ -269,9 +285,15 @@ def _compile_evaluator(e: dict[str, Any]) -> dict[str, Any]:
 def _compile_action(a: dict[str, Any]) -> dict[str, Any]:
     kind = a["_kind"]
     if kind == "create_finding":
-        return {"type": "create_finding", "severity": a["severity"], "title": a["title"], "message": a["message"] or a["title"]}
+        out: dict[str, Any] = {"type": "create_finding", "severity": a["severity"], "title": a["title"], "message": a["message"] or a["title"]}
+        if a.get("type"):
+            out["signal_type"] = a["type"]
+        return out
     if kind == "emit_signal":
-        return {"type": "emit_signal", "severity": a["severity"], "title": a["title"], "message": a["message"] or a["title"]}
+        out = {"type": "emit_signal", "severity": a["severity"], "title": a["title"], "message": a["message"] or a["title"]}
+        if a.get("type"):
+            out["signal_type"] = a["type"]
+        return out
     if kind == "notify":
         return {"type": "notify", "channel": a["channel"], "target": a["target"]}
     if kind == "mark":
@@ -305,11 +327,16 @@ def compile_monitor(spec: MonitorSpec) -> dict[str, Any]:
         raise ValueError("invalid 'when' expression")
 
     signal_action = next((a for a in actions if a["type"] in ("create_finding", "emit_signal")), None)
-    signal = (
-        {"title": signal_action["title"], "message": signal_action["message"], "severity": signal_action["severity"]}
-        if signal_action
-        else {"title": spec.name, "message": spec.description or spec.name, "severity": spec.severity}
-    )
+    if signal_action:
+        signal: dict[str, Any] = {
+            "title": signal_action["title"],
+            "message": signal_action["message"],
+            "severity": signal_action["severity"],
+        }
+        if "signal_type" in signal_action:
+            signal["type"] = signal_action["signal_type"]
+    else:
+        signal = {"title": spec.name, "message": spec.description or spec.name, "severity": spec.severity}
 
     definition: dict[str, Any] = {
         "version": 1,
