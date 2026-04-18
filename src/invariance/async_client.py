@@ -18,6 +18,7 @@ from urllib.parse import urlencode
 
 import httpx
 
+from ._types import Severity
 from .client import InvarianceApiError
 from .monitors import MonitorSpec, compile_monitor
 from ._internal import build_node_body, now_ms as _now_ms, random_node_id as _random_node_id
@@ -252,7 +253,7 @@ class AsyncRun:
         self,
         spec: dict[str, Any] | None = None,
         *,
-        severity: str | None = None,
+        severity: Severity | None = None,
         title: str | None = None,
         message: str | None = None,
         type: str | None = None,
@@ -422,7 +423,7 @@ class AsyncMonitorsResource:
         id: str,
         *,
         name: str | None = None,
-        severity: str | None = None,
+        severity: Severity | None = None,
         status: str | None = None,
     ) -> dict[str, Any]:
         patch: dict[str, Any] = {}
@@ -449,7 +450,7 @@ class AsyncSignalsResource:
     async def emit(
         self,
         *,
-        severity: str,
+        severity: Severity,
         title: str,
         message: str | None = None,
         type: str | None = None,

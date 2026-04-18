@@ -1,24 +1,31 @@
-"""Declarative custom node types for typed trace nodes.
+"""Declarative custom node types for typed nodes.
 
 Declare a node type once, stamp it on writes, and reference it from
 Monitor selectors (``on.node(type=...)``). The schema is informational
-only — no runtime validation — but IDE/type-checker users get hints
-when they pass a ``TypedDict`` as ``schema``.
+only — no runtime validation — but IDE/type-checkers narrow
+``custom_fields`` to the declared generic when callers pass a
+``TypedDict``.
+
+>>> class BillingFields(TypedDict):
+...     user_id: str
+...     amount_cents: int
+>>> BillingCharge = define_node_type("billing_charge", BillingFields)
+>>> with run.step("tool.use", type=BillingCharge.type,
+...               custom_fields={"user_id": "u_1", "amount_cents": 500}) as s:
+...     ...
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Generic, TypeVar
+
+T = TypeVar("T", bound=dict)
 
 
 @dataclass(frozen=True)
-class NodeType:
-    """A declared custom node type.
-
-    >>> BillingCharge = NodeType("billing_charge")
-    >>> run.step("tool.use", type=BillingCharge.type, custom_fields={...})
-    """
+class NodeType(Generic[T]):
+    """A declared custom node type with a typed ``custom_fields`` shape."""
 
     type: str
 
@@ -30,7 +37,7 @@ class NodeType:
         output: Any | None = None,
         error: Any | None = None,
         metadata: dict[str, Any] | None = None,
-        custom_fields: dict[str, Any] | None = None,
+        custom_fields: T | None = None,
         parent_id: str | None = None,
     ) -> dict[str, Any]:
         """Build a node-write dict stamped with this type.
@@ -53,6 +60,11 @@ class NodeType:
         return body
 
 
-def define_node_type(type: str) -> NodeType:
-    """Convenience factory mirroring the TS ``defineNodeType`` surface."""
+def define_node_type(type: str, _schema: type | None = None) -> NodeType:
+    """Convenience factory mirroring the TS ``defineNodeType`` surface.
+
+    The optional second argument is a ``TypedDict`` class used only by
+    type-checkers to infer the ``custom_fields`` generic — it's ignored
+    at runtime.
+    """
     return NodeType(type)

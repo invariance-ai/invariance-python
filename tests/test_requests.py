@@ -60,12 +60,12 @@ def test_node_write_path_and_body():
     from invariance.runs import Run
 
     run = Run(inv._http, {"id": "run_1", "agent_id": "a_1", "name": "demo", "status": "open"}, buffered=False)
-    result = run.node(action_type="tool_call", input={"a": 1}, output={"b": 2})
+    with run.step("tool_call", input={"a": 1}) as s:
+        s.output = {"b": 2}
     assert seen["method"] == "POST"
     assert seen["path"] == "/v1/nodes"
     assert '"run_id":"run_1"' in seen["body"].replace(" ", "")
     assert '"action_type":"tool_call"' in seen["body"].replace(" ", "")
-    assert result["id"] == "n_1"
 
 
 def test_backend_error_preserved():

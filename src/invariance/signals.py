@@ -18,21 +18,69 @@ Users declare a ``SignalType`` once and emit instances from inside a run
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 from urllib.parse import urlencode
 
+from ._types import Severity
 from .client import HttpClient
 
-Severity = Literal["info", "low", "medium", "high", "critical"]
+SignalSource = Literal["monitor", "manual", "detector"]
+SignalStatus = Literal["open", "acknowledged", "resolved"]
+
+
+class Signal(TypedDict):
+    """Server-returned signal row. Mirrors TS `Signal` interface."""
+
+    id: str
+    agent_id: str
+    monitor_id: str | None
+    monitor_execution_id: str | None
+    run_id: str | None
+    node_id: str | None
+    source: SignalSource
+    severity: Severity
+    title: str
+    message: str | None
+    status: SignalStatus
+    type: str | None
+    data: Any
+    acknowledged_at: str | None
+    created_at: str
+
+
+def build_signal_body(
+    *,
+    severity: Severity,
+    title: str,
+    message: str | None = None,
+    type: str | None = None,
+    data: Any | None = None,
+    node_id: str | None = None,
+    run_id: str | None = None,
+) -> dict[str, Any]:
+    """Assemble the POST body for /v1/signals, stripping unset fields."""
+    body: dict[str, Any] = {"severity": severity, "title": title}
+    if message is not None:
+        body["message"] = message
+    if type is not None:
+        body["type"] = type
+    if data is not None:
+        body["data"] = data
+    if node_id is not None:
+        body["node_id"] = node_id
+    if run_id is not None:
+        body["run_id"] = run_id
+    return body
 
 
 @dataclass(frozen=True)
 class SignalType:
     """A declared signal category.
 
-    Pairs with the backend `signals.type` column and with monitor
+    Pairs with the backend ``signals.type`` column and with monitor
     ``action.emit_signal(type=...)``. ``signal()`` stamps this type onto
-    an :class:`EmitSignalInput` dict.
+    a signal body dict suitable for ``run.signal(...)`` or
+    ``inv.signals.emit(**spec)``.
     """
 
     type: str
@@ -50,21 +98,15 @@ class SignalType:
         title: str | None = None,
         message: str | None = None,
     ) -> dict[str, Any]:
-        body: dict[str, Any] = {
-            "type": self.type,
-            "severity": severity or self.severity,
-            "title": title or self.title,
-        }
-        msg = message if message is not None else self.message
-        if msg is not None:
-            body["message"] = msg
-        if data is not None:
-            body["data"] = data
-        if node_id is not None:
-            body["node_id"] = node_id
-        if run_id is not None:
-            body["run_id"] = run_id
-        return body
+        return build_signal_body(
+            severity=severity or self.severity,
+            title=title or self.title,
+            message=message if message is not None else self.message,
+            type=self.type,
+            data=data,
+            node_id=node_id,
+            run_id=run_id,
+        )
 
 
 def define_signal_type(
@@ -92,18 +134,16 @@ class SignalsResource:
         data: Any | None = None,
         node_id: str | None = None,
         run_id: str | None = None,
-    ) -> dict[str, Any]:
-        body: dict[str, Any] = {"severity": severity, "title": title}
-        if message is not None:
-            body["message"] = message
-        if type is not None:
-            body["type"] = type
-        if data is not None:
-            body["data"] = data
-        if node_id is not None:
-            body["node_id"] = node_id
-        if run_id is not None:
-            body["run_id"] = run_id
+    ) -> Signal:
+        body = build_signal_body(
+            severity=severity,
+            title=title,
+            message=message,
+            type=type,
+            data=data,
+            node_id=node_id,
+            run_id=run_id,
+        )
         res = self._http.post("/v1/signals", json=body)
         return res["signal"]
 
@@ -121,10 +161,14 @@ class SignalsResource:
         qs = f"?{urlencode(params)}" if params else ""
         return self._http.get(f"/v1/signals{qs}")
 
-    def get(self, id: str) -> dict[str, Any]:
+    def get(self, id: str) -> Signal:
         res = self._http.get(f"/v1/signals/{id}")
         return res["signal"]
 
-    def acknowledge(self, id: str) -> dict[str, Any]:
+    def acknowledge(self, id: str) -> Signal:
         res = self._http.patch(f"/v1/signals/{id}/acknowledge")
+        return res["signal"]
+
+    def resolve(self, id: str) -> Signal:
+        res = self._http.patch(f"/v1/signals/{id}/resolve")
         return res["signal"]
