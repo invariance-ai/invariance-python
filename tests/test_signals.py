@@ -117,6 +117,37 @@ def test_run_signal_auto_attaches_last_node_id():
     assert sig["id"] == "signal_1"
 
 
+def test_signals_resolve_patches():
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        return httpx.Response(
+            200, json={"signal": {"id": "signal_9", "status": "resolved"}}
+        )
+
+    inv = _client_with_handler(handler)
+    got = inv.signals.resolve("signal_9")
+    assert captured["method"] == "PATCH"
+    assert captured["path"] == "/v1/signals/signal_9/resolve"
+    assert got["status"] == "resolved"
+
+
+def test_run_signal_requires_spec_dict():
+    import pytest
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404)
+
+    inv = _client_with_handler(handler)
+    from invariance.runs import Run
+
+    run = Run(inv._http, {"id": "run_1", "agent_id": "a_1", "name": "t", "status": "open"})
+    with pytest.raises(ValueError, match="severity and title"):
+        run.signal({"severity": "high"})
+
+
 def test_monitor_emit_signal_compiles_signal_type():
     d = compile_monitor(
         MonitorSpec(

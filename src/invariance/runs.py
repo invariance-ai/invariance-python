@@ -244,97 +244,23 @@ class Run:
                     # but legal) starts from the right previous_hash.
                     self._last_hash = last["hash"]
 
-    # ── Low-level escape hatch ─────────────────────────────────────────
-
-    def node(
-        self,
-        *,
-        action_type: str,
-        input: Any | None = None,
-        output: Any | None = None,
-        error: Any | None = None,
-        metadata: dict[str, Any] | None = None,
-        custom_fields: dict[str, Any] | None = None,
-        timestamp: int | None = None,
-        duration_ms: int | None = None,
-        parent_id: str | None = None,
-        type: str | None = None,
-    ) -> dict[str, Any]:
-        """Write a single node immediately, bypassing buffer.
-
-        Prefer :meth:`step` for ergonomic multi-step flows. This method
-        stays for callers that want raw control.
-        """
-        with self._lock:
-            # Flush any buffered nodes first so ordering/chaining is preserved.
-            self._flush_locked()
-            body, self._last_hash = build_node_body(
-                run_id=self.run_id,
-                agent_id=self._session["agent_id"],
-                last_hash=self._last_hash,
-                signing_key=self._signing_key,
-                id=_random_node_id(),
-                action_type=action_type,
-                type=type,
-                input=input,
-                output=output,
-                error=error,
-                metadata=metadata,
-                custom_fields=custom_fields,
-                parent_id=parent_id,
-                timestamp=timestamp,
-                duration_ms=duration_ms,
-            )
-            res = self._http.post("/v1/nodes", json=body)
-            node = res["data"][0]
-            if "hash" in node and not self._signing_key:
-                self._last_hash = node["hash"]
-            self._last_node_id = node.get("id", self._last_node_id)
-            return node
-
     # ── Signals ────────────────────────────────────────────────────────
 
-    def signal(
-        self,
-        spec: dict[str, Any] | None = None,
-        *,
-        severity: str | None = None,
-        title: str | None = None,
-        message: str | None = None,
-        type: str | None = None,
-        data: Any | None = None,
-        node_id: str | None = None,
-        run_id: str | None = None,
-    ) -> dict[str, Any]:
+    def signal(self, spec: dict[str, Any]) -> dict[str, Any]:
         """Emit a signal attached to the current run (and last node by default).
 
-        ``spec`` accepts the output of :meth:`SignalType.signal` for the
-        ergonomic ``run.signal(DangerousOutput.signal(data=...))`` form.
+        ``spec`` is a body dict — typically the output of
+        :meth:`SignalType.signal` (``run.signal(DangerousOutput.signal(...))``).
+        For ad-hoc one-off signals, call
+        ``inv.signals.emit(severity=..., title=...)`` directly.
         """
         self.flush()
-        merged: dict[str, Any] = dict(spec) if spec else {}
-        if severity is not None:
-            merged["severity"] = severity
-        if title is not None:
-            merged["title"] = title
-        if message is not None:
-            merged["message"] = message
-        if type is not None:
-            merged["type"] = type
-        if data is not None:
-            merged["data"] = data
-        if node_id is not None:
-            merged["node_id"] = node_id
-        if run_id is not None:
-            merged["run_id"] = run_id
-
+        merged = dict(spec)
         if "severity" not in merged or "title" not in merged:
-            raise ValueError("signal() requires severity and title (directly or via spec)")
-
+            raise ValueError("signal spec requires severity and title")
         merged.setdefault("run_id", self.run_id)
         if "node_id" not in merged and self._last_node_id is not None:
             merged["node_id"] = self._last_node_id
-
         return self._signals.emit(**merged)
 
     # ── Lifecycle ──────────────────────────────────────────────────────
