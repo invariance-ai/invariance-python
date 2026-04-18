@@ -55,15 +55,9 @@ from invariance import Invariance
 
 inv = Invariance(api_key="...")
 
-run = inv.run.start(name="support-ticket")
-
-run.node(
-    action_type="tool_call",
-    input={"query": "refund"},
-    output={"answer": "..."},
-)
-
-run.finish()
+with inv.runs.start(name="support-ticket") as run:
+    with run.step("tool_call", input={"query": "refund"}) as s:
+        s.output = {"answer": "..."}
 
 monitor = inv.monitors.create_simple(
     name="Dangerous output",
