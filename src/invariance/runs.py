@@ -41,9 +41,11 @@ class Step:
         output: Any | None = None,
         metadata: dict[str, Any] | None = None,
         custom_fields: dict[str, Any] | None = None,
+        type: str | None = None,
     ) -> None:
         self._run = run
         self.action_type = action_type
+        self.type = type
         self.input = input
         self.output = output
         self.error: Any | None = None
@@ -73,6 +75,7 @@ class Step:
             self._run._emit(
                 id=self.id,
                 action_type=self.action_type,
+                type=self.type,
                 input=self.input,
                 output=self.output,
                 error=self.error,
@@ -165,6 +168,7 @@ class Run:
         output: Any | None = None,
         metadata: dict[str, Any] | None = None,
         custom_fields: dict[str, Any] | None = None,
+        type: str | None = None,
     ) -> Step:
         return Step(
             self,
@@ -173,6 +177,7 @@ class Run:
             output=output,
             metadata=metadata,
             custom_fields=custom_fields,
+            type=type,
         )
 
     # ── Emit / flush ───────────────────────────────────────────────────
@@ -182,6 +187,7 @@ class Run:
         *,
         id: str,
         action_type: str,
+        type: str | None,
         input: Any | None,
         output: Any | None,
         error: Any | None,
@@ -199,6 +205,7 @@ class Run:
                 signing_key=self._signing_key,
                 id=id,
                 action_type=action_type,
+                type=type,
                 input=input,
                 output=output,
                 error=error,
@@ -247,6 +254,7 @@ class Run:
         timestamp: int | None = None,
         duration_ms: int | None = None,
         parent_id: str | None = None,
+        type: str | None = None,
     ) -> dict[str, Any]:
         """Write a single node immediately, bypassing buffer.
 
@@ -263,6 +271,7 @@ class Run:
                 signing_key=self._signing_key,
                 id=_random_node_id(),
                 action_type=action_type,
+                type=type,
                 input=input,
                 output=output,
                 error=error,

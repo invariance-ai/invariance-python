@@ -19,6 +19,7 @@ from urllib.parse import urlencode
 import httpx
 
 from .client import InvarianceApiError
+from .monitors import MonitorSpec, compile_monitor
 from ._internal import build_node_body, now_ms as _now_ms, random_node_id as _random_node_id
 
 DEFAULT_API_URL = "https://api.useinvariance.com"
@@ -79,9 +80,11 @@ class AsyncStep:
         output: Any | None = None,
         metadata: dict[str, Any] | None = None,
         custom_fields: dict[str, Any] | None = None,
+        type: str | None = None,
     ) -> None:
         self._run = run
         self.action_type = action_type
+        self.type = type
         self.input = input
         self.output = output
         self.error: Any | None = None
@@ -111,6 +114,7 @@ class AsyncStep:
             await self._run._emit(
                 id=self.id,
                 action_type=self.action_type,
+                type=self.type,
                 input=self.input,
                 output=self.output,
                 error=self.error,
@@ -178,6 +182,7 @@ class AsyncRun:
         output: Any | None = None,
         metadata: dict[str, Any] | None = None,
         custom_fields: dict[str, Any] | None = None,
+        type: str | None = None,
     ) -> AsyncStep:
         return AsyncStep(
             self,
@@ -186,6 +191,7 @@ class AsyncRun:
             output=output,
             metadata=metadata,
             custom_fields=custom_fields,
+            type=type,
         )
 
     async def _emit(
@@ -193,6 +199,7 @@ class AsyncRun:
         *,
         id: str,
         action_type: str,
+        type: str | None,
         input: Any | None,
         output: Any | None,
         error: Any | None,
@@ -210,6 +217,7 @@ class AsyncRun:
                 signing_key=self._signing_key,
                 id=id,
                 action_type=action_type,
+                type=type,
                 input=input,
                 output=output,
                 error=error,
@@ -335,6 +343,61 @@ class AsyncAgentsResource:
         return res["agent"]
 
 
+class AsyncMonitorsResource:
+    def __init__(self, http: AsyncHttpClient) -> None:
+        self._http = http
+
+    async def create(self, spec: MonitorSpec) -> dict[str, Any]:
+        body = {"name": spec.name, "definition": compile_monitor(spec), "severity": spec.severity}
+        res = await self._http.post("/v1/monitors", json=body)
+        return res["monitor"]
+
+    async def get(self, id: str) -> dict[str, Any]:
+        res = await self._http.get(f"/v1/monitors/{id}")
+        return res["monitor"]
+
+    async def list(
+        self,
+        *,
+        cursor: str | None = None,
+        limit: int | None = None,
+        status: str | None = None,
+    ) -> dict[str, Any]:
+        params: dict[str, str] = {}
+        if cursor:
+            params["cursor"] = cursor
+        if limit:
+            params["limit"] = str(limit)
+        if status:
+            params["status"] = status
+        qs = f"?{urlencode(params)}" if params else ""
+        return await self._http.get(f"/v1/monitors{qs}")
+
+    async def update(
+        self,
+        id: str,
+        *,
+        name: str | None = None,
+        severity: str | None = None,
+        status: str | None = None,
+    ) -> dict[str, Any]:
+        patch: dict[str, Any] = {}
+        if name is not None:
+            patch["name"] = name
+        if severity is not None:
+            patch["severity"] = severity
+        if status is not None:
+            patch["status"] = status
+        res = await self._http.request("PUT", f"/v1/monitors/{id}", json=patch)
+        return res["monitor"]
+
+    async def pause(self, id: str) -> dict[str, Any]:
+        return await self.update(id, status="paused")
+
+    async def resume(self, id: str) -> dict[str, Any]:
+        return await self.update(id, status="active")
+
+
 class AsyncInvariance:
     def __init__(
         self,
@@ -349,6 +412,7 @@ class AsyncInvariance:
         self.runs = AsyncRunsResource(self._http, signing_key)
         self.nodes = AsyncNodesResource(self._http)
         self.agents = AsyncAgentsResource(self._http)
+        self.monitors = AsyncMonitorsResource(self._http)
 
     async def aclose(self) -> None:
         await self._http.aclose()
