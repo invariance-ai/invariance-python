@@ -23,7 +23,8 @@ def build_node_body(
     signing_key: str | None,
     id: str,
     action_type: str,
-    input: Any | None,
+    type: str | None = None,
+    input: Any | None = None,
     output: Any | None,
     error: Any | None,
     metadata: dict[str, Any] | None,
@@ -43,6 +44,8 @@ def build_node_body(
         "id": id,
         "action_type": action_type,
     }
+    if type is not None:
+        body["type"] = type
     if input is not None:
         body["input"] = input
     if output is not None:
