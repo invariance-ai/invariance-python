@@ -6,7 +6,7 @@ import traceback
 from typing import Any
 from urllib.parse import urlencode
 
-from ._types import Severity
+from ._types import RunList
 from .client import HttpClient
 from ._internal import build_node_body, now_ms as _now_ms, random_node_id as _random_node_id
 from .signals import SignalsResource
@@ -319,7 +319,7 @@ class RunsResource:
         *,
         cursor: str | None = None,
         limit: int | None = None,
-    ) -> dict[str, Any]:
+    ) -> RunList:
         params: dict[str, str] = {}
         if cursor:
             params["cursor"] = cursor

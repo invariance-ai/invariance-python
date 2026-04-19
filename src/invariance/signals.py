@@ -18,34 +18,21 @@ Users declare a ``SignalType`` once and emit instances from inside a run
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal
 from urllib.parse import urlencode
 
-from ._types import Severity
+from ._types import Severity, Signal, SignalList, SignalSource, SignalStatus
 from .client import HttpClient
 
-SignalSource = Literal["monitor", "manual", "detector"]
-SignalStatus = Literal["open", "acknowledged", "resolved"]
-
-
-class Signal(TypedDict):
-    """Server-returned signal row. Mirrors TS `Signal` interface."""
-
-    id: str
-    agent_id: str
-    monitor_id: str | None
-    monitor_execution_id: str | None
-    run_id: str | None
-    node_id: str | None
-    source: SignalSource
-    severity: Severity
-    title: str
-    message: str | None
-    status: SignalStatus
-    type: str | None
-    data: Any
-    acknowledged_at: str | None
-    created_at: str
+__all__ = [
+    "Signal",
+    "SignalSource",
+    "SignalStatus",
+    "SignalType",
+    "SignalsResource",
+    "build_signal_body",
+    "define_signal_type",
+]
 
 
 def build_signal_body(
@@ -152,7 +139,7 @@ class SignalsResource:
         *,
         cursor: str | None = None,
         limit: int | None = None,
-    ) -> dict[str, Any]:
+    ) -> SignalList:
         params: dict[str, str] = {}
         if cursor:
             params["cursor"] = cursor

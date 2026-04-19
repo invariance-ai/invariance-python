@@ -155,13 +155,12 @@ def test_monitors_list_forwards_params():
         return httpx.Response(200, json={"data": [], "next_cursor": None})
 
     inv = _client_with_handler(handler)
-    inv.monitors.list(limit=25, status="active")
+    inv.monitors.list(limit=25)
     assert seen["path"] == "/v1/monitors"
     assert seen["params"]["limit"] == "25"
-    assert seen["params"]["status"] == "active"
 
 
-def test_monitors_update_patches_name_and_severity():
+def test_monitors_update_patches_name_and_enabled():
     seen = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -171,10 +170,10 @@ def test_monitors_update_patches_name_and_severity():
         return httpx.Response(200, json={"monitor": {"id": "mon_1"}})
 
     inv = _client_with_handler(handler)
-    inv.monitors.update("mon_1", name="renamed", severity="critical")
-    assert seen["method"] == "PUT"
+    inv.monitors.update("mon_1", name="renamed", enabled=False)
+    assert seen["method"] == "PATCH"
     assert seen["path"] == "/v1/monitors/mon_1"
-    assert seen["body"] == {"name": "renamed", "severity": "critical"}
+    assert seen["body"] == {"name": "renamed", "enabled": False}
 
 
 def test_monitors_pause_and_resume_delegate_to_update():
@@ -187,5 +186,5 @@ def test_monitors_pause_and_resume_delegate_to_update():
     inv = _client_with_handler(handler)
     inv.monitors.pause("mon_1")
     inv.monitors.resume("mon_1")
-    assert calls[0]["body"] == {"status": "paused"}
-    assert calls[1]["body"] == {"status": "active"}
+    assert calls[0]["body"] == {"enabled": False}
+    assert calls[1]["body"] == {"enabled": True}

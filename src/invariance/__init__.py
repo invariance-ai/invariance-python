@@ -21,9 +21,12 @@ from .findings import FindingsResource
 from .reviews import ReviewsResource
 from .async_client import (
     AsyncAgentsResource,
+    AsyncFindingsResource,
     AsyncInvariance,
     AsyncMonitorsResource,
     AsyncNodesResource,
+    AsyncProofsResource,
+    AsyncReviewsResource,
     AsyncRun,
     AsyncRunsResource,
     AsyncSignalsResource,
@@ -57,6 +60,9 @@ __all__ = [
     "AsyncAgentsResource",
     "AsyncMonitorsResource",
     "AsyncSignalsResource",
+    "AsyncProofsResource",
+    "AsyncFindingsResource",
+    "AsyncReviewsResource",
     "async_trace",
     "NodesResource",
     "AgentsResource",
