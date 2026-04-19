@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import urlencode
 
+from ._types import Node, NodeList
 from .client import HttpClient
 
 
@@ -14,7 +15,7 @@ class NodesResource:
         self,
         run_id: str,
         nodes: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
+    ) -> list[Node]:
         body = [{"run_id": run_id, **n} for n in nodes]
         res = self._http.post("/v1/nodes", json=body)
         return res["data"]
@@ -25,7 +26,7 @@ class NodesResource:
         *,
         cursor: str | None = None,
         limit: int | None = None,
-    ) -> dict[str, Any]:
+    ) -> NodeList:
         params: dict[str, str] = {}
         if cursor:
             params["cursor"] = cursor

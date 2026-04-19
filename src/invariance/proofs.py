@@ -6,8 +6,7 @@ the chain and reports whether the stored state is consistent.
 
 from __future__ import annotations
 
-from typing import Any
-
+from ._types import RunProof
 from .client import HttpClient
 
 
@@ -15,6 +14,5 @@ class ProofsResource:
     def __init__(self, http: HttpClient) -> None:
         self._http = http
 
-    def verify_run(self, run_id: str) -> dict[str, Any]:
-        """Return ``{valid, node_count, head_hash, first_invalid_node_id, reason}``."""
+    def verify_run(self, run_id: str) -> RunProof:
         return self._http.get(f"/v1/runs/{run_id}/verify")

@@ -8,11 +8,19 @@ Mirror of the TypeScript ``monitors`` module. Users compose a
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Literal
 from urllib.parse import urlencode
 
-from ._types import NumericOp, Severity
+from ._types import (
+    EvaluateMonitorResponse,
+    FindingList,
+    Monitor,
+    MonitorExecutionList,
+    MonitorList,
+    NumericOp,
+    Severity,
+)
 from .client import HttpClient
 
 
@@ -279,11 +287,11 @@ class MonitorsResource:
     def __init__(self, http: HttpClient) -> None:
         self._http = http
 
-    def create(self, spec: MonitorSpec) -> dict[str, Any]:
+    def create(self, spec: MonitorSpec) -> Monitor:
         res = self._http.post("/v1/monitors", json=compile_monitor(spec))
         return res["monitor"]
 
-    def get(self, id: str) -> dict[str, Any]:
+    def get(self, id: str) -> Monitor:
         res = self._http.get(f"/v1/monitors/{id}")
         return res["monitor"]
 
@@ -292,15 +300,12 @@ class MonitorsResource:
         *,
         cursor: str | None = None,
         limit: int | None = None,
-        status: Literal["active", "paused", "disabled"] | None = None,
-    ) -> dict[str, Any]:
+    ) -> MonitorList:
         params: dict[str, str] = {}
         if cursor:
             params["cursor"] = cursor
         if limit:
             params["limit"] = str(limit)
-        if status:
-            params["status"] = status
         qs = f"?{urlencode(params)}" if params else ""
         return self._http.get(f"/v1/monitors{qs}")
 
@@ -309,21 +314,80 @@ class MonitorsResource:
         id: str,
         *,
         name: str | None = None,
-        severity: Severity | None = None,
-        status: Literal["active", "paused"] | None = None,
-    ) -> dict[str, Any]:
+        description: str | None = None,
+        enabled: bool | None = None,
+        evaluator: dict[str, Any] | None = None,
+        schedule: dict[str, Any] | None = None,
+        creates_review: bool | None = None,
+        signal_type: str | None = None,
+    ) -> Monitor:
         patch: dict[str, Any] = {}
         if name is not None:
             patch["name"] = name
-        if severity is not None:
-            patch["severity"] = severity
-        if status is not None:
-            patch["status"] = status
-        res = self._http.request("PUT", f"/v1/monitors/{id}", json=patch)
+        if description is not None:
+            patch["description"] = description
+        if enabled is not None:
+            patch["enabled"] = enabled
+        if evaluator is not None:
+            patch["evaluator"] = evaluator
+        if schedule is not None:
+            patch["schedule"] = schedule
+        if creates_review is not None:
+            patch["creates_review"] = creates_review
+        if signal_type is not None:
+            patch["signal_type"] = signal_type
+        res = self._http.patch(f"/v1/monitors/{id}", json=patch)
         return res["monitor"]
 
-    def pause(self, id: str) -> dict[str, Any]:
-        return self.update(id, status="paused")
+    def pause(self, id: str) -> Monitor:
+        return self.update(id, enabled=False)
 
-    def resume(self, id: str) -> dict[str, Any]:
-        return self.update(id, status="active")
+    def resume(self, id: str) -> Monitor:
+        return self.update(id, enabled=True)
+
+    def evaluate(
+        self,
+        id: str,
+        *,
+        run_id: str | None = None,
+        since: str | None = None,
+        limit: int | None = None,
+    ) -> EvaluateMonitorResponse:
+        body: dict[str, Any] = {}
+        if run_id is not None:
+            body["run_id"] = run_id
+        if since is not None:
+            body["since"] = since
+        if limit is not None:
+            body["limit"] = limit
+        return self._http.post(f"/v1/monitors/{id}/evaluate", json=body)
+
+    def executions(
+        self,
+        id: str,
+        *,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> MonitorExecutionList:
+        params: dict[str, str] = {}
+        if cursor:
+            params["cursor"] = cursor
+        if limit:
+            params["limit"] = str(limit)
+        qs = f"?{urlencode(params)}" if params else ""
+        return self._http.get(f"/v1/monitors/{id}/executions{qs}")
+
+    def findings(
+        self,
+        id: str,
+        *,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> FindingList:
+        params: dict[str, str] = {}
+        if cursor:
+            params["cursor"] = cursor
+        if limit:
+            params["limit"] = str(limit)
+        qs = f"?{urlencode(params)}" if params else ""
+        return self._http.get(f"/v1/monitors/{id}/findings{qs}")
