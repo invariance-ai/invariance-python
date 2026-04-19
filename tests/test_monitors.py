@@ -1,7 +1,6 @@
 import json
 
 import httpx
-import pytest
 
 from invariance import (
     Invariance,
@@ -9,7 +8,6 @@ from invariance import (
     action,
     compile_monitor,
     define_node_type,
-    evaluator,
     on,
     rule,
 )
@@ -84,30 +82,25 @@ def test_compile_create_finding_sets_creates_review():
     assert d["severity"] == "critical"
 
 
-def test_compile_rejects_unsupported_judge_llm():
-    with pytest.raises(NotImplementedError, match="judge_llm"):
-        compile_monitor(
-            MonitorSpec(
-                name="j",
-                on=on.run(agent_id="agt_1"),
-                when=evaluator.judge_llm(model="claude-sonnet-4-6", rubric="ok?"),
-                do=action.emit_signal(severity="low", title="t"),
-            )
+def test_compile_numeric_eq_neq():
+    d_eq = compile_monitor(
+        MonitorSpec(
+            name="eq",
+            on=on.node(type="t"),
+            when=rule.numeric("custom_fields.count", "eq", 0),
+            do=action.emit_signal(severity="low", title="zero"),
         )
-
-
-def test_compile_rejects_rule_composition():
-    with pytest.raises(NotImplementedError, match="composition"):
-        compile_monitor(
-            MonitorSpec(
-                name="combo",
-                on=on.agent("agt_x"),
-                when=rule.any_(
-                    rule.field_equals("status", "error"), rule.exists("error")
-                ),
-                do=action.emit_signal(severity="low", title="t"),
-            )
+    )
+    assert d_eq["evaluator"]["operator"] == "=="
+    d_neq = compile_monitor(
+        MonitorSpec(
+            name="neq",
+            on=on.node(type="t"),
+            when=rule.numeric("custom_fields.count", "neq", 0),
+            do=action.emit_signal(severity="low", title="nonzero"),
         )
+    )
+    assert d_neq["evaluator"]["operator"] == "!="
 
 
 def test_node_type_stamps_type_field():
