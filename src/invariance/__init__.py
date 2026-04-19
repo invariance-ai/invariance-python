@@ -11,7 +11,6 @@ from .monitors import (
     compile_monitor,
     on,
     rule,
-    evaluator,
     action,
 )
 from .node_types import NodeType, define_node_type
@@ -71,7 +70,6 @@ __all__ = [
     "compile_monitor",
     "on",
     "rule",
-    "evaluator",
     "action",
     "NodeType",
     "define_node_type",

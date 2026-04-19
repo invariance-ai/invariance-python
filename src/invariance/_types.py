@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Literal, TypedDict
 
 Severity = Literal["info", "low", "medium", "high", "critical"]
-NumericOp = Literal["gt", "gte", "lt", "lte"]
+NumericOp = Literal["gt", "gte", "lt", "lte", "eq", "neq"]
 
 
 # ── Identity ───────────────────────────────────────────────────────────────

@@ -1,15 +1,19 @@
 """Monitors SDK surface.
 
 Mirror of the TypeScript ``monitors`` module. Users compose a
-``MonitorSpec`` from builders (``on``, ``rule``, ``evaluator``,
-``action``), and the resource compiles it to a backend
-``MonitorDefinition`` JSON body before POSTing.
+``MonitorSpec`` from builders (``on``, ``rule``, ``action``), and the
+resource compiles it to the platform's ``CreateMonitorRequest`` JSON
+body before POSTing.
+
+The DSL is deliberately scoped to exactly what the platform backend
+supports: keyword and threshold evaluators, with ``emit_signal`` /
+``create_finding`` actions.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Union
 from urllib.parse import urlencode
 
 from ._types import (
@@ -24,15 +28,19 @@ from ._types import (
 from .client import HttpClient
 
 
-# ── Spec dataclasses ───────────────────────────────────────────────────────
+# ── Rule / Action shapes ───────────────────────────────────────────────────
+
+
+Rule = dict[str, Any]
+Action = dict[str, Any]
 
 
 @dataclass
 class MonitorSpec:
     name: str
     on: dict[str, Any]
-    when: dict[str, Any]
-    do: dict[str, Any] | list[dict[str, Any]]
+    when: Rule
+    do: Union[Action, list[Action]]
     severity: Severity = "medium"
     description: str | None = None
 
@@ -41,7 +49,10 @@ class MonitorSpec:
 
 
 class on:
-    """Selector builders — compile to ``MonitorTargetMatch`` + trigger."""
+    """Selector hints. The platform currently scopes evaluation per
+    agent; these remain as ergonomic metadata that may influence future
+    filtering. They do not change the compiled ``CreateMonitorRequest``.
+    """
 
     @staticmethod
     def session(*, id: str | None = None, tags: list[str] | None = None) -> dict[str, Any]:
@@ -71,86 +82,23 @@ class on:
 
 class rule:
     @staticmethod
-    def field_equals(field: str, value: Any) -> dict[str, Any]:
+    def field_equals(field: str, value: Any) -> Rule:
         return {"_kind": "field_equals", "field": field, "value": value}
 
     @staticmethod
-    def field_contains(field: str, value: Any) -> dict[str, Any]:
+    def field_contains(field: str, value: Any) -> Rule:
         return {"_kind": "field_contains", "field": field, "value": value}
 
     @staticmethod
-    def numeric(field: str, op: NumericOp, value: float) -> dict[str, Any]:
+    def numeric(field: str, op: NumericOp, value: float) -> Rule:
         return {"_kind": "numeric", "field": field, "op": op, "value": value}
-
-    @staticmethod
-    def exists(field: str, exists: bool = True) -> dict[str, Any]:
-        return {"_kind": "exists", "field": field, "exists": exists}
-
-    @staticmethod
-    def frequency(
-        field: str,
-        value: Any,
-        *,
-        per_minutes: int,
-        op: NumericOp,
-        threshold: float,
-        window_minutes: int,
-    ) -> dict[str, Any]:
-        return {
-            "_kind": "frequency",
-            "field": field,
-            "value": value,
-            "per_minutes": per_minutes,
-            "op": op,
-            "threshold": threshold,
-            "window_minutes": window_minutes,
-        }
-
-    @staticmethod
-    def all_(*rules: dict[str, Any]) -> dict[str, Any]:
-        return {"_match": "all", "rules": list(rules)}
-
-    @staticmethod
-    def any_(*rules: dict[str, Any]) -> dict[str, Any]:
-        return {"_match": "any", "rules": list(rules)}
-
-
-class evaluator:
-    @staticmethod
-    def judge_llm(
-        *,
-        model: str,
-        rubric: str,
-        output_schema: dict[str, Any] | None = None,
-        max_tokens: int | None = None,
-    ) -> dict[str, Any]:
-        return {
-            "_kind": "judge_llm",
-            "model": model,
-            "rubric": rubric,
-            "output_schema": output_schema,
-            "max_tokens": max_tokens,
-        }
-
-    @staticmethod
-    def judge_human(
-        *,
-        queue: str,
-        instructions: str | None = None,
-        notify: list[Literal["email", "slack", "dashboard"]] | None = None,
-    ) -> dict[str, Any]:
-        return {"_kind": "judge_human", "queue": queue, "instructions": instructions, "notify": notify}
-
-    @staticmethod
-    def code(inline_script: str, *, runtime: Literal["hosted", "customer"] = "hosted") -> dict[str, Any]:
-        return {"_kind": "code", "inline_script": inline_script, "runtime": runtime}
 
 
 class action:
     @staticmethod
     def create_finding(
         *, severity: Severity, title: str, message: str | None = None, type: str | None = None
-    ) -> dict[str, Any]:
+    ) -> Action:
         return {
             "_kind": "create_finding",
             "severity": severity,
@@ -162,7 +110,7 @@ class action:
     @staticmethod
     def emit_signal(
         *, severity: Severity, title: str, message: str | None = None, type: str | None = None
-    ) -> dict[str, Any]:
+    ) -> Action:
         return {
             "_kind": "emit_signal",
             "severity": severity,
@@ -171,38 +119,21 @@ class action:
             "type": type,
         }
 
-    @staticmethod
-    def notify(channel: Literal["email", "slack", "webhook", "dashboard"], target: str) -> dict[str, Any]:
-        return {"_kind": "notify", "channel": channel, "target": target}
-
-    @staticmethod
-    def mark(label: str) -> dict[str, Any]:
-        return {"_kind": "mark", "label": label}
-
-    @staticmethod
-    def webhook(
-        url: str,
-        *,
-        method: Literal["GET", "POST"] = "POST",
-        headers: dict[str, str] | None = None,
-    ) -> dict[str, Any]:
-        return {"_kind": "webhook", "url": url, "method": method, "headers": headers}
-
 
 # ── Compilation ────────────────────────────────────────────────────────────
 
 
-_OP_MAP: dict[str, str] = {"gt": ">", "gte": ">=", "lt": "<", "lte": "<="}
+_OP_MAP: dict[str, str] = {
+    "gt": ">",
+    "gte": ">=",
+    "lt": "<",
+    "lte": "<=",
+    "eq": "==",
+    "neq": "!=",
+}
 
 
-def _compile_rule_to_evaluator(r: dict[str, Any]) -> dict[str, Any]:
-    """Map a single SDK rule to a backend ``MonitorEvaluator``.
-
-    Backend supports exactly two evaluator types: ``keyword`` (substring
-    match) and ``threshold`` (numeric comparison). Other rule kinds
-    (``exists``, ``frequency``, LLM/human/code judges, rule composition)
-    are out of scope for the MVP backend and raise ``NotImplementedError``.
-    """
+def _compile_rule_to_evaluator(r: Rule) -> dict[str, Any]:
     kind = r.get("_kind")
     if kind == "field_contains":
         return {
@@ -225,46 +156,25 @@ def _compile_rule_to_evaluator(r: dict[str, Any]) -> dict[str, Any]:
             "operator": _OP_MAP[r["op"]],
             "value": r["value"],
         }
-    if kind in {"exists", "frequency"}:
-        raise NotImplementedError(
-            f"rule.{kind} is not supported by the current backend evaluator"
-        )
-    if kind in {"judge_llm", "judge_human", "code"}:
-        raise NotImplementedError(
-            f"evaluator.{kind} is not supported by the current backend evaluator"
-        )
     raise ValueError(f"unknown rule kind: {kind}")
 
 
 def compile_monitor(spec: MonitorSpec) -> dict[str, Any]:
-    """Compile a :class:`MonitorSpec` to a backend ``CreateMonitorRequest``.
+    """Compile a :class:`MonitorSpec` to a platform ``CreateMonitorRequest``.
 
     Returned shape matches ``@invariance/api-types`` ``CreateMonitorRequest``:
-    ``{name, description?, evaluator, severity, signal_type?, creates_review?, schedule?}``.
-
-    Unsupported DSL constructs raise ``NotImplementedError`` with an
-    explicit message so callers can see exactly which piece isn't wired
-    through yet.
+    ``{name, description?, evaluator, severity, signal_type?, creates_review?}``.
     """
-    w = spec.when
-    if "_match" in w:
-        raise NotImplementedError(
-            "rule.any_/all_ composition is not supported by the current backend evaluator"
-        )
-    evaluator_body = _compile_rule_to_evaluator(w)
+    evaluator_body = _compile_rule_to_evaluator(spec.when)
 
     do_list = spec.do if isinstance(spec.do, list) else [spec.do]
     signal_action = next(
         (a for a in do_list if a.get("_kind") in {"emit_signal", "create_finding"}), None
     )
-    signal_type: str | None = signal_action["type"] if signal_action and signal_action.get("type") else None
+    signal_type: str | None = (
+        signal_action["type"] if signal_action and signal_action.get("type") else None
+    )
     creates_review = any(a.get("_kind") == "create_finding" for a in do_list)
-
-    for a in do_list:
-        if a.get("_kind") in {"notify", "mark", "webhook"}:
-            raise NotImplementedError(
-                f"action.{a['_kind']} is not supported by the current backend"
-            )
 
     body: dict[str, Any] = {
         "name": spec.name,
