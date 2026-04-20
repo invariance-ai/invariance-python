@@ -273,3 +273,25 @@ class FindingList(TypedDict):
 class ReviewList(TypedDict):
     data: list[Review]
     next_cursor: str | None
+
+
+# ── Narratives ─────────────────────────────────────────────────────────────
+
+
+NarrativeProvider = Literal["anthropic", "openai", "google"]
+NarrativeScorer = Literal["severity"]
+
+
+class Narrative(TypedDict):
+    run_id: str
+    agent_id: str
+    narrative: str
+    key_moments: list[str]
+    root_cause: str
+    scorer: NarrativeScorer
+    model: str
+    provider: NarrativeProvider
+    scored_node_count: int
+    total_node_count: int
+    created_at: str
+    updated_at: str
