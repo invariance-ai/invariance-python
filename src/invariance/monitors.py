@@ -14,7 +14,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Union
-from urllib.parse import urlencode
 
 from ._types import (
     EvaluateMonitorResponse,
@@ -26,6 +25,7 @@ from ._types import (
     Severity,
 )
 from .client import HttpClient
+from ._query import with_query
 
 
 # ── Rule / Action shapes ───────────────────────────────────────────────────
@@ -139,7 +139,7 @@ def _compile_rule_to_evaluator(r: Rule) -> dict[str, Any]:
         return {
             "type": "keyword",
             "field": r["field"],
-            "keywords": [r["value"]],
+            "keywords": [str(r["value"])],
             "case_sensitive": False,
         }
     if kind == "field_equals":
@@ -211,13 +211,7 @@ class MonitorsResource:
         cursor: str | None = None,
         limit: int | None = None,
     ) -> MonitorList:
-        params: dict[str, str] = {}
-        if cursor:
-            params["cursor"] = cursor
-        if limit:
-            params["limit"] = str(limit)
-        qs = f"?{urlencode(params)}" if params else ""
-        return self._http.get(f"/v1/monitors{qs}")
+        return self._http.get(with_query("/v1/monitors", cursor=cursor, limit=limit))
 
     def update(
         self,
@@ -279,13 +273,9 @@ class MonitorsResource:
         cursor: str | None = None,
         limit: int | None = None,
     ) -> MonitorExecutionList:
-        params: dict[str, str] = {}
-        if cursor:
-            params["cursor"] = cursor
-        if limit:
-            params["limit"] = str(limit)
-        qs = f"?{urlencode(params)}" if params else ""
-        return self._http.get(f"/v1/monitors/{id}/executions{qs}")
+        return self._http.get(
+            with_query(f"/v1/monitors/{id}/executions", cursor=cursor, limit=limit)
+        )
 
     def findings(
         self,
@@ -294,10 +284,6 @@ class MonitorsResource:
         cursor: str | None = None,
         limit: int | None = None,
     ) -> FindingList:
-        params: dict[str, str] = {}
-        if cursor:
-            params["cursor"] = cursor
-        if limit:
-            params["limit"] = str(limit)
-        qs = f"?{urlencode(params)}" if params else ""
-        return self._http.get(f"/v1/monitors/{id}/findings{qs}")
+        return self._http.get(
+            with_query(f"/v1/monitors/{id}/findings", cursor=cursor, limit=limit)
+        )

@@ -7,10 +7,9 @@ failed | needs_fix``.
 
 from __future__ import annotations
 
-from urllib.parse import urlencode
-
 from ._types import Review, ReviewDecision, ReviewList, ReviewResponse
 from .client import HttpClient
+from ._query import with_query
 
 
 class ReviewsResource:
@@ -23,13 +22,7 @@ class ReviewsResource:
         cursor: str | None = None,
         limit: int | None = None,
     ) -> ReviewList:
-        params: dict[str, str] = {}
-        if cursor:
-            params["cursor"] = cursor
-        if limit:
-            params["limit"] = str(limit)
-        qs = f"?{urlencode(params)}" if params else ""
-        return self._http.get(f"/v1/reviews{qs}")
+        return self._http.get(with_query("/v1/reviews", cursor=cursor, limit=limit))
 
     def get(self, id: str) -> Review:
         res = self._http.get(f"/v1/reviews/{id}")

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import urlencode
 
 from ._types import Node, NodeList
 from .client import HttpClient
+from ._query import with_query
 
 
 class NodesResource:
@@ -27,10 +27,4 @@ class NodesResource:
         cursor: str | None = None,
         limit: int | None = None,
     ) -> NodeList:
-        params: dict[str, str] = {}
-        if cursor:
-            params["cursor"] = cursor
-        if limit:
-            params["limit"] = str(limit)
-        qs = f"?{urlencode(params)}" if params else ""
-        return self._http.get(f"/v1/runs/{run_id}/nodes{qs}")
+        return self._http.get(with_query(f"/v1/runs/{run_id}/nodes", cursor=cursor, limit=limit))

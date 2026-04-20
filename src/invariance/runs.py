@@ -4,11 +4,11 @@ import contextvars
 import threading
 import traceback
 from typing import Any
-from urllib.parse import urlencode
 
 from ._types import RunList
 from .client import HttpClient
 from ._internal import build_node_body, now_ms as _now_ms, random_node_id as _random_node_id
+from ._query import with_query
 from .signals import SignalsResource
 
 
@@ -320,13 +320,7 @@ class RunsResource:
         cursor: str | None = None,
         limit: int | None = None,
     ) -> RunList:
-        params: dict[str, str] = {}
-        if cursor:
-            params["cursor"] = cursor
-        if limit:
-            params["limit"] = str(limit)
-        qs = f"?{urlencode(params)}" if params else ""
-        return self._http.get(f"/v1/runs{qs}")
+        return self._http.get(with_query("/v1/runs", cursor=cursor, limit=limit))
 
     def get(self, id: str) -> Run:
         res = self._http.get(f"/v1/runs/{id}")
