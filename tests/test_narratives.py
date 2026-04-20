@@ -111,3 +111,24 @@ def test_async_narratives_get_hits_expected_path():
     assert seen["path"] == "/v1/runs/run_1/narrative"
     assert seen["query"] == "refresh=true"
     assert n["run_id"] == "run_1"
+
+
+def test_async_narratives_get_surfaces_503_as_api_error():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            503,
+            json={"error": {"code": "internal_error", "message": "No LLM provider configured"}},
+        )
+
+    async def run() -> None:
+        inv = _async_inv_with_handler(handler)
+        from invariance import InvarianceApiError
+
+        try:
+            with pytest.raises(InvarianceApiError) as exc:
+                await inv.narratives.get("run_1")
+            assert exc.value.status == 503
+        finally:
+            await inv.aclose()
+
+    asyncio.run(run())

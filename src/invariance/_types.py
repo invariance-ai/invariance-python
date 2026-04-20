@@ -279,7 +279,12 @@ class ReviewList(TypedDict):
 
 
 NarrativeProvider = Literal["anthropic", "openai", "google"]
-NarrativeScorer = Literal["severity"]
+
+# Scorer used by the backend to select "interesting" nodes for synthesis.
+# Kept as `str` rather than a Literal union so older SDK builds still parse
+# narratives when the backend adds new scorers. Known values as of this
+# release: "severity".
+NarrativeScorer = str
 
 
 class Narrative(TypedDict):
