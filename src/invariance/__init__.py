@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .client import HttpClient, InvarianceApiError
+from .config import DEFAULT_API_URL, Features, ResolvedConfig, resolve_config
 from .runs import Run, RunsResource, Step
 from .nodes import NodesResource
 from .agents import AgentsResource
@@ -42,11 +43,13 @@ from .crypto import (
     sha256_hex,
 )
 
-DEFAULT_API_URL = "https://api.useinvariance.com"
-
 __all__ = [
     "Invariance",
     "InvarianceApiError",
+    "Features",
+    "ResolvedConfig",
+    "resolve_config",
+    "DEFAULT_API_URL",
     "Run",
     "RunsResource",
     "Step",
@@ -92,15 +95,22 @@ __all__ = [
 class Invariance:
     def __init__(
         self,
-        api_key: str,
+        api_key: str | None = None,
         api_url: str | None = None,
         *,
         signing_key: str | None = None,
+        features: dict[str, bool] | None = None,
     ) -> None:
-        if not api_key:
-            raise ValueError("api_key is required")
-        self._http = HttpClient(api_url or DEFAULT_API_URL, api_key)
-        self.runs = RunsResource(self._http, signing_key)
+        cfg = resolve_config(
+            api_key=api_key,
+            api_url=api_url,
+            signing_key=signing_key,
+            features=features,
+        )
+        self.config = cfg
+        self.features = cfg.features
+        self._http = HttpClient(cfg.api_url, cfg.api_key)
+        self.runs = RunsResource(self._http, cfg.signing_key, features=cfg.features)
         self.nodes = NodesResource(self._http)
         self.agents = AgentsResource(self._http)
         self.monitors = MonitorsResource(self._http)
