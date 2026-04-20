@@ -29,6 +29,7 @@ from ._types import (
     Monitor,
     MonitorExecutionList,
     MonitorList,
+    Narrative,
     Node,
     NodeList,
     Review,
@@ -638,6 +639,18 @@ class AsyncReviewsResource:
         return await self._http.patch(f"/v1/reviews/{id}", json=body)
 
 
+class AsyncNarrativesResource:
+    def __init__(self, http: AsyncHttpClient) -> None:
+        self._http = http
+
+    async def get(self, run_id: str, *, refresh: bool = False) -> Narrative:
+        path = f"/v1/runs/{run_id}/narrative"
+        if refresh:
+            path += "?refresh=true"
+        res = await self._http.get(path)
+        return res["narrative"]
+
+
 class AsyncInvariance:
     def __init__(
         self,
@@ -657,6 +670,7 @@ class AsyncInvariance:
         self.proofs = AsyncProofsResource(self._http)
         self.findings = AsyncFindingsResource(self._http)
         self.reviews = AsyncReviewsResource(self._http)
+        self.narratives = AsyncNarrativesResource(self._http)
 
     async def aclose(self) -> None:
         await self._http.aclose()

@@ -273,3 +273,30 @@ class FindingList(TypedDict):
 class ReviewList(TypedDict):
     data: list[Review]
     next_cursor: str | None
+
+
+# ── Narratives ─────────────────────────────────────────────────────────────
+
+
+NarrativeProvider = Literal["anthropic", "openai", "google"]
+
+# Scorer used by the backend to select "interesting" nodes for synthesis.
+# Kept as `str` rather than a Literal union so older SDK builds still parse
+# narratives when the backend adds new scorers. Known values as of this
+# release: "severity".
+NarrativeScorer = str
+
+
+class Narrative(TypedDict):
+    run_id: str
+    agent_id: str
+    narrative: str
+    key_moments: list[str]
+    root_cause: str
+    scorer: NarrativeScorer
+    model: str
+    provider: NarrativeProvider
+    scored_node_count: int
+    total_node_count: int
+    created_at: str
+    updated_at: str
