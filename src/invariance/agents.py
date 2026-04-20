@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from urllib.parse import urlencode
-
 from ._types import Agent, AgentList, CreateAgentResponse, GetMeResponse
 from .client import HttpClient
+from ._query import with_query
 
 
 class AgentsResource:
@@ -35,8 +34,7 @@ class AgentsResource:
         return self._http.post("/v1/agents", json=body)
 
     def list(self, *, project_id: str) -> AgentList:
-        qs = urlencode({"project_id": project_id})
-        return self._http.get(f"/v1/agents?{qs}")
+        return self._http.get(with_query("/v1/agents", project_id=project_id))
 
     def get(self, id: str) -> Agent:
         res = self._http.get(f"/v1/agents/{id}")
