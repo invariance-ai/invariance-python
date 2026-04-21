@@ -49,6 +49,18 @@ def test_compile_field_contains_maps_to_keyword_evaluator():
     }
 
 
+def test_compile_field_contains_stringifies_non_string_values():
+    d = compile_monitor(
+        MonitorSpec(
+            name="flag-count",
+            on=on.node(action_type="tool.use"),
+            when=rule.field_contains("custom_fields.count", 7),
+            do=action.emit_signal(severity="low", title="Count"),
+        )
+    )
+    assert d["evaluator"]["keywords"] == ["7"]
+
+
 def test_compile_numeric_maps_to_threshold_evaluator():
     BillingCharge = define_node_type("billing_charge")
     d = compile_monitor(

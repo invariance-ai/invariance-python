@@ -19,11 +19,13 @@ from .signals import SignalType, SignalsResource, define_signal_type
 from .proofs import ProofsResource
 from .findings import FindingsResource
 from .reviews import ReviewsResource
+from .narratives import NarrativesResource
 from .async_client import (
     AsyncAgentsResource,
     AsyncFindingsResource,
     AsyncInvariance,
     AsyncMonitorsResource,
+    AsyncNarrativesResource,
     AsyncNodesResource,
     AsyncProofsResource,
     AsyncReviewsResource,
@@ -82,6 +84,8 @@ __all__ = [
     "ProofsResource",
     "FindingsResource",
     "ReviewsResource",
+    "NarrativesResource",
+    "AsyncNarrativesResource",
     "generate_keypair",
     "get_public_key",
     "sign_ed25519",
@@ -118,6 +122,7 @@ class Invariance:
         self.proofs = ProofsResource(self._http)
         self.findings = FindingsResource(self._http)
         self.reviews = ReviewsResource(self._http)
+        self.narratives = NarrativesResource(self._http)
 
     def close(self) -> None:
         self._http.close()

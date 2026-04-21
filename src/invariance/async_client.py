@@ -14,7 +14,6 @@ import functools
 import inspect
 import traceback
 from typing import Any, Callable, TypeVar
-from urllib.parse import urlencode
 
 import httpx
 
@@ -30,6 +29,7 @@ from ._types import (
     Monitor,
     MonitorExecutionList,
     MonitorList,
+    Narrative,
     Node,
     NodeList,
     Review,
@@ -45,6 +45,7 @@ from ._types import (
 from .client import InvarianceApiError
 from .monitors import MonitorSpec, compile_monitor
 from ._internal import build_node_body, now_ms as _now_ms, random_node_id as _random_node_id
+from ._query import with_query
 
 DEFAULT_API_URL = "https://api.useinvariance.com"
 BATCH_MAX = 100
@@ -355,13 +356,7 @@ class AsyncRunsResource:
         return AsyncRun(self._http, res["run"], signing_key or self._signing_key, buffered=buffered)
 
     async def list(self, *, cursor: str | None = None, limit: int | None = None) -> RunList:
-        params: dict[str, str] = {}
-        if cursor:
-            params["cursor"] = cursor
-        if limit:
-            params["limit"] = str(limit)
-        qs = f"?{urlencode(params)}" if params else ""
-        return await self._http.get(f"/v1/runs{qs}")
+        return await self._http.get(with_query("/v1/runs", cursor=cursor, limit=limit))
 
     async def get(self, id: str) -> AsyncRun:
         res = await self._http.get(f"/v1/runs/{id}")
@@ -388,13 +383,9 @@ class AsyncNodesResource:
         cursor: str | None = None,
         limit: int | None = None,
     ) -> NodeList:
-        params: dict[str, str] = {}
-        if cursor:
-            params["cursor"] = cursor
-        if limit:
-            params["limit"] = str(limit)
-        qs = f"?{urlencode(params)}" if params else ""
-        return await self._http.get(f"/v1/runs/{run_id}/nodes{qs}")
+        return await self._http.get(
+            with_query(f"/v1/runs/{run_id}/nodes", cursor=cursor, limit=limit)
+        )
 
 
 class AsyncAgentsResource:
@@ -426,8 +417,7 @@ class AsyncAgentsResource:
         return await self._http.post("/v1/agents", json=body)
 
     async def list(self, *, project_id: str) -> AgentList:
-        qs = urlencode({"project_id": project_id})
-        return await self._http.get(f"/v1/agents?{qs}")
+        return await self._http.get(with_query("/v1/agents", project_id=project_id))
 
     async def get(self, id: str) -> Agent:
         res = await self._http.get(f"/v1/agents/{id}")
@@ -452,13 +442,7 @@ class AsyncMonitorsResource:
         cursor: str | None = None,
         limit: int | None = None,
     ) -> MonitorList:
-        params: dict[str, str] = {}
-        if cursor:
-            params["cursor"] = cursor
-        if limit:
-            params["limit"] = str(limit)
-        qs = f"?{urlencode(params)}" if params else ""
-        return await self._http.get(f"/v1/monitors{qs}")
+        return await self._http.get(with_query("/v1/monitors", cursor=cursor, limit=limit))
 
     async def update(
         self,
@@ -520,13 +504,9 @@ class AsyncMonitorsResource:
         cursor: str | None = None,
         limit: int | None = None,
     ) -> MonitorExecutionList:
-        params: dict[str, str] = {}
-        if cursor:
-            params["cursor"] = cursor
-        if limit:
-            params["limit"] = str(limit)
-        qs = f"?{urlencode(params)}" if params else ""
-        return await self._http.get(f"/v1/monitors/{id}/executions{qs}")
+        return await self._http.get(
+            with_query(f"/v1/monitors/{id}/executions", cursor=cursor, limit=limit)
+        )
 
     async def findings(
         self,
@@ -535,13 +515,9 @@ class AsyncMonitorsResource:
         cursor: str | None = None,
         limit: int | None = None,
     ) -> FindingList:
-        params: dict[str, str] = {}
-        if cursor:
-            params["cursor"] = cursor
-        if limit:
-            params["limit"] = str(limit)
-        qs = f"?{urlencode(params)}" if params else ""
-        return await self._http.get(f"/v1/monitors/{id}/findings{qs}")
+        return await self._http.get(
+            with_query(f"/v1/monitors/{id}/findings", cursor=cursor, limit=limit)
+        )
 
 
 class AsyncSignalsResource:
@@ -576,13 +552,7 @@ class AsyncSignalsResource:
     async def list(
         self, *, cursor: str | None = None, limit: int | None = None
     ) -> SignalList:
-        params: dict[str, str] = {}
-        if cursor:
-            params["cursor"] = cursor
-        if limit:
-            params["limit"] = str(limit)
-        qs = f"?{urlencode(params)}" if params else ""
-        return await self._http.get(f"/v1/signals{qs}")
+        return await self._http.get(with_query("/v1/signals", cursor=cursor, limit=limit))
 
     async def get(self, id: str) -> Signal:
         res = await self._http.get(f"/v1/signals/{id}")
@@ -615,13 +585,7 @@ class AsyncFindingsResource:
         cursor: str | None = None,
         limit: int | None = None,
     ) -> FindingList:
-        params: dict[str, str] = {}
-        if cursor:
-            params["cursor"] = cursor
-        if limit:
-            params["limit"] = str(limit)
-        qs = f"?{urlencode(params)}" if params else ""
-        return await self._http.get(f"/v1/findings{qs}")
+        return await self._http.get(with_query("/v1/findings", cursor=cursor, limit=limit))
 
     async def get(self, id: str) -> Finding:
         res = await self._http.get(f"/v1/findings/{id}")
@@ -642,13 +606,7 @@ class AsyncReviewsResource:
         cursor: str | None = None,
         limit: int | None = None,
     ) -> ReviewList:
-        params: dict[str, str] = {}
-        if cursor:
-            params["cursor"] = cursor
-        if limit:
-            params["limit"] = str(limit)
-        qs = f"?{urlencode(params)}" if params else ""
-        return await self._http.get(f"/v1/reviews{qs}")
+        return await self._http.get(with_query("/v1/reviews", cursor=cursor, limit=limit))
 
     async def get(self, id: str) -> Review:
         res = await self._http.get(f"/v1/reviews/{id}")
@@ -681,6 +639,18 @@ class AsyncReviewsResource:
         return await self._http.patch(f"/v1/reviews/{id}", json=body)
 
 
+class AsyncNarrativesResource:
+    def __init__(self, http: AsyncHttpClient) -> None:
+        self._http = http
+
+    async def get(self, run_id: str, *, refresh: bool = False) -> Narrative:
+        path = f"/v1/runs/{run_id}/narrative"
+        if refresh:
+            path += "?refresh=true"
+        res = await self._http.get(path)
+        return res["narrative"]
+
+
 class AsyncInvariance:
     def __init__(
         self,
@@ -700,6 +670,7 @@ class AsyncInvariance:
         self.proofs = AsyncProofsResource(self._http)
         self.findings = AsyncFindingsResource(self._http)
         self.reviews = AsyncReviewsResource(self._http)
+        self.narratives = AsyncNarrativesResource(self._http)
 
     async def aclose(self) -> None:
         await self._http.aclose()

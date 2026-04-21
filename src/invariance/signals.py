@@ -19,10 +19,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Literal
-from urllib.parse import urlencode
 
 from ._types import Severity, Signal, SignalList, SignalSource, SignalStatus
 from .client import HttpClient
+from ._query import with_query
 
 __all__ = [
     "Signal",
@@ -140,13 +140,7 @@ class SignalsResource:
         cursor: str | None = None,
         limit: int | None = None,
     ) -> SignalList:
-        params: dict[str, str] = {}
-        if cursor:
-            params["cursor"] = cursor
-        if limit:
-            params["limit"] = str(limit)
-        qs = f"?{urlencode(params)}" if params else ""
-        return self._http.get(f"/v1/signals{qs}")
+        return self._http.get(with_query("/v1/signals", cursor=cursor, limit=limit))
 
     def get(self, id: str) -> Signal:
         res = self._http.get(f"/v1/signals/{id}")
