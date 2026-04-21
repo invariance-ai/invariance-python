@@ -10,6 +10,7 @@ from ._types import RunList
 from .client import HttpClient
 from .config import Features
 from ._internal import build_node_body, now_ms as _now_ms, random_node_id as _random_node_id
+from .handoff_token import HandoffToken, build_handoff_token
 from .signals import SignalsResource
 
 
@@ -207,21 +208,40 @@ class Run:
         message: Any | None = None,
         reason: str | None = None,
         from_agent_id: str | None = None,
-    ) -> None:
+    ) -> HandoffToken | None:
         """Emit a 'handoff' node marking delegation to another agent.
 
-        The node's `handoff_to` is `to_agent_id`; `handoff_from` defaults to the
-        current run's agent. Dashboards render these as swimlane boundaries.
+        Returns a :class:`HandoffToken` when the run is signed (i.e. the SDK was
+        initialized with a ``signing_key``) — deliver ``token.encode()`` to the
+        receiving agent so they can pass it as ``parent_handoff_token`` when
+        creating their run. Returns ``None`` for unsigned runs (no crypto chain
+        of custody is possible without keys).
         """
+        issuer_agent_id = from_agent_id or self._session.get("agent_id")
         with self.step(
             "handoff",
             type="handoff",
             input={"message": message} if message is not None else None,
-            handoff_from=from_agent_id or self._session.get("agent_id"),
+            handoff_from=issuer_agent_id,
             handoff_to=to_agent_id,
             handoff_reason=reason,
         ):
             pass
+        if not self._signing_key or self._last_hash is None or self._last_node_id is None:
+            return None
+        # Token references this node by id; the receiver's platform lookup will
+        # fail until the node is persisted. Flush here so callers can hand the
+        # token off immediately without reasoning about buffering.
+        self.flush()
+        return build_handoff_token(
+            iss_agent_id=issuer_agent_id,
+            iss_run_id=self.run_id,
+            handoff_node_id=self._last_node_id,
+            handoff_node_hash=self._last_hash,
+            to_agent_id=to_agent_id,
+            signing_key=self._signing_key,
+            iat_ms=_now_ms(),
+        )
 
     # ── Emit / flush ───────────────────────────────────────────────────
 
@@ -260,13 +280,10 @@ class Run:
                 parent_id=parent_id,
                 timestamp=timestamp,
                 duration_ms=duration_ms,
+                handoff_from=handoff_from,
+                handoff_to=handoff_to,
+                handoff_reason=handoff_reason,
             )
-            if handoff_from is not None:
-                body["handoff_from"] = handoff_from
-            if handoff_to is not None:
-                body["handoff_to"] = handoff_to
-            if handoff_reason is not None:
-                body["handoff_reason"] = handoff_reason
             self._buffer.append(body)
             self._last_node_id = body["id"]
             if not self._buffered or len(self._buffer) >= BATCH_MAX:
@@ -356,6 +373,7 @@ class RunsResource:
         signing_key: str | None = None,
         buffered: bool = True,
         replay_seed: str | None = None,
+        parent_handoff_token: str | None = None,
     ) -> Run:
         body: dict[str, Any] = {}
         if name is not None:
@@ -369,6 +387,8 @@ class RunsResource:
                     "(set INVARIANCE_FEATURE_REPLAY=true)"
                 )
             body["replay_seed"] = replay_seed
+        if parent_handoff_token is not None:
+            body["parent_handoff_token"] = parent_handoff_token
         res = self._http.post("/v1/runs", json=body)
         return Run(
             self._http,
