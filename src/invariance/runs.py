@@ -7,8 +7,10 @@ from typing import Any
 
 from ._types import RunList
 from .client import HttpClient
+from .config import Features
 from ._internal import build_node_body, now_ms as _now_ms, random_node_id as _random_node_id
 from ._query import with_query
+from .handoff_token import HandoffToken, build_handoff_token
 from .signals import SignalsResource
 
 
@@ -44,6 +46,9 @@ class Step:
         metadata: dict[str, Any] | None = None,
         custom_fields: dict[str, Any] | None = None,
         type: str | None = None,
+        handoff_from: str | None = None,
+        handoff_to: str | None = None,
+        handoff_reason: str | None = None,
     ) -> None:
         self._run = run
         self.action_type = action_type
@@ -53,6 +58,9 @@ class Step:
         self.error: Any | None = None
         self.metadata = dict(metadata) if metadata else None
         self.custom_fields = dict(custom_fields) if custom_fields else None
+        self.handoff_from = handoff_from
+        self.handoff_to = handoff_to
+        self.handoff_reason = handoff_reason
         self.id = _random_node_id()
         self._parent_id: str | None = None
         self._start_ms: int | None = None
@@ -86,6 +94,9 @@ class Step:
                 parent_id=self._parent_id,
                 timestamp=self._start_ms,
                 duration_ms=duration_ms,
+                handoff_from=self.handoff_from,
+                handoff_to=self.handoff_to,
+                handoff_reason=self.handoff_reason,
             )
         finally:
             if self._token is not None:
@@ -173,6 +184,9 @@ class Run:
         metadata: dict[str, Any] | None = None,
         custom_fields: dict[str, Any] | None = None,
         type: str | None = None,
+        handoff_from: str | None = None,
+        handoff_to: str | None = None,
+        handoff_reason: str | None = None,
     ) -> Step:
         return Step(
             self,
@@ -182,6 +196,51 @@ class Run:
             metadata=metadata,
             custom_fields=custom_fields,
             type=type,
+            handoff_from=handoff_from,
+            handoff_to=handoff_to,
+            handoff_reason=handoff_reason,
+        )
+
+    def handoff(
+        self,
+        to_agent_id: str,
+        *,
+        message: Any | None = None,
+        reason: str | None = None,
+        from_agent_id: str | None = None,
+    ) -> HandoffToken | None:
+        """Emit a 'handoff' node marking delegation to another agent.
+
+        Returns a :class:`HandoffToken` when the run is signed (i.e. the SDK was
+        initialized with a ``signing_key``) — deliver ``token.encode()`` to the
+        receiving agent so they can pass it as ``parent_handoff_token`` when
+        creating their run. Returns ``None`` for unsigned runs (no crypto chain
+        of custody is possible without keys).
+        """
+        issuer_agent_id = from_agent_id or self._session.get("agent_id")
+        with self.step(
+            "handoff",
+            type="handoff",
+            input={"message": message} if message is not None else None,
+            handoff_from=issuer_agent_id,
+            handoff_to=to_agent_id,
+            handoff_reason=reason,
+        ):
+            pass
+        if not self._signing_key or self._last_hash is None or self._last_node_id is None:
+            return None
+        # Token references this node by id; the receiver's platform lookup will
+        # fail until the node is persisted. Flush here so callers can hand the
+        # token off immediately without reasoning about buffering.
+        self.flush()
+        return build_handoff_token(
+            iss_agent_id=issuer_agent_id,
+            iss_run_id=self.run_id,
+            handoff_node_id=self._last_node_id,
+            handoff_node_hash=self._last_hash,
+            to_agent_id=to_agent_id,
+            signing_key=self._signing_key,
+            iat_ms=_now_ms(),
         )
 
     # ── Emit / flush ───────────────────────────────────────────────────
@@ -200,6 +259,9 @@ class Run:
         parent_id: str | None,
         timestamp: int | None,
         duration_ms: int | None,
+        handoff_from: str | None = None,
+        handoff_to: str | None = None,
+        handoff_reason: str | None = None,
     ) -> None:
         with self._lock:
             body, self._last_hash = build_node_body(
@@ -218,6 +280,9 @@ class Run:
                 parent_id=parent_id,
                 timestamp=timestamp,
                 duration_ms=duration_ms,
+                handoff_from=handoff_from,
+                handoff_to=handoff_to,
+                handoff_reason=handoff_reason,
             )
             self._buffer.append(body)
             self._last_node_id = body["id"]
@@ -289,9 +354,16 @@ class Run:
 
 
 class RunsResource:
-    def __init__(self, http: HttpClient, signing_key: str | None = None) -> None:
+    def __init__(
+        self,
+        http: HttpClient,
+        signing_key: str | None = None,
+        *,
+        features: Features | None = None,
+    ) -> None:
         self._http = http
         self._signing_key = signing_key
+        self._features = features or Features()
 
     def start(
         self,
@@ -300,12 +372,23 @@ class RunsResource:
         *,
         signing_key: str | None = None,
         buffered: bool = True,
+        replay_seed: str | None = None,
+        parent_handoff_token: str | None = None,
     ) -> Run:
         body: dict[str, Any] = {}
         if name is not None:
             body["name"] = name
         if metadata is not None:
             body["metadata"] = metadata
+        if replay_seed is not None:
+            if not self._features.replay:
+                raise ValueError(
+                    "replay_seed requires features.replay=True "
+                    "(set INVARIANCE_FEATURE_REPLAY=true)"
+                )
+            body["replay_seed"] = replay_seed
+        if parent_handoff_token is not None:
+            body["parent_handoff_token"] = parent_handoff_token
         res = self._http.post("/v1/runs", json=body)
         return Run(
             self._http,
@@ -313,6 +396,29 @@ class RunsResource:
             signing_key or self._signing_key,
             buffered=buffered,
         )
+
+    def fork(
+        self,
+        run_id: str,
+        from_node_id: str,
+        *,
+        name: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> Run:
+        """Fork a run from a given node. Returns a new Run handle whose lineage
+        points back at the parent. Requires ``features.replay=True``."""
+        if not self._features.replay:
+            raise ValueError(
+                "fork() requires features.replay=True "
+                "(set INVARIANCE_FEATURE_REPLAY=true)"
+            )
+        body: dict[str, Any] = {"from_node_id": from_node_id}
+        if name is not None:
+            body["name"] = name
+        if metadata is not None:
+            body["metadata"] = metadata
+        res = self._http.post(f"/v1/runs/{run_id}/fork", json=body)
+        return Run(self._http, res["run"], self._signing_key)
 
     def list(
         self,

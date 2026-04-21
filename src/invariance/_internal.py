@@ -32,6 +32,9 @@ def build_node_body(
     parent_id: str | None,
     timestamp: int | None,
     duration_ms: int | None,
+    handoff_from: str | None = None,
+    handoff_to: str | None = None,
+    handoff_reason: str | None = None,
 ) -> tuple[dict[str, Any], str | None]:
     """Build a node POST body. Returns (body, new_last_hash).
 
@@ -60,12 +63,18 @@ def build_node_body(
         body["parent_id"] = parent_id
     if duration_ms is not None:
         body["duration_ms"] = duration_ms
+    if handoff_from is not None:
+        body["handoff_from"] = handoff_from
+    if handoff_to is not None:
+        body["handoff_to"] = handoff_to
+    if handoff_reason is not None:
+        body["handoff_reason"] = handoff_reason
 
     new_last_hash = last_hash
     if signing_key:
         ts = timestamp if timestamp is not None else now_ms()
         prev = [] if last_hash is None else [last_hash]
-        payload = {
+        payload: dict[str, Any] = {
             "id": id,
             "run_id": run_id,
             "agent_id": agent_id,
@@ -80,6 +89,12 @@ def build_node_body(
             "duration_ms": duration_ms,
             "previous_hashes": prev,
         }
+        if handoff_from is not None:
+            payload["handoff_from"] = handoff_from
+        if handoff_to is not None:
+            payload["handoff_to"] = handoff_to
+        if handoff_reason is not None:
+            payload["handoff_reason"] = handoff_reason
         body["timestamp"] = ts
         body["previous_hashes"] = prev
         digest = hash_node_payload(payload)
