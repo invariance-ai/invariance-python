@@ -54,6 +54,7 @@ class on:
     filtering. They do not change the compiled ``CreateMonitorRequest``.
     """
 
+    # Legacy alias retained for older callers; new code should prefer ``on.run(...)``.
     @staticmethod
     def session(*, id: str | None = None, tags: list[str] | None = None) -> dict[str, Any]:
         return {"_scope": "session", "id": id, "tags": tags}
@@ -119,6 +120,10 @@ class action:
             "type": type,
         }
 
+    @staticmethod
+    def create_review() -> Action:
+        return {"_kind": "create_review"}
+
 
 # ── Compilation ────────────────────────────────────────────────────────────
 
@@ -159,13 +164,45 @@ def _compile_rule_to_evaluator(r: Rule) -> dict[str, Any]:
     raise ValueError(f"unknown rule kind: {kind}")
 
 
+def _compile_on_to_scope_target(spec: dict[str, Any]) -> tuple[str, dict[str, Any] | None]:
+    scope = spec.get("_scope")
+    if scope == "session":
+        run_id = spec.get("id")
+        return "run", {"kind": "specific_run", "run_id": run_id} if run_id else {"kind": "current_run"}
+    if scope == "run":
+        run_id = spec.get("id")
+        return "run", {"kind": "specific_run", "run_id": run_id} if run_id else {"kind": "current_run"}
+    if scope == "agent":
+        return "agent", {
+            "kind": "agent_history",
+            "filters": [{"field": "agent_id", "operator": "eq", "value": spec["id"]}],
+        }
+    if scope == "node":
+        filters: list[dict[str, Any]] = []
+        if spec.get("type") is not None:
+            filters.append({"field": "type", "operator": "eq", "value": spec["type"]})
+        if spec.get("action_type") is not None:
+            filters.append(
+                {"field": "action_type", "operator": "eq", "value": spec["action_type"]}
+            )
+        if spec.get("agent_id") is not None:
+            filters.append({"field": "agent_id", "operator": "eq", "value": spec["agent_id"]})
+        return "node", {"kind": "agent_history", "filters": filters} if filters else None
+    return "batch", None
+
+
 def compile_monitor(spec: MonitorSpec) -> dict[str, Any]:
     """Compile a :class:`MonitorSpec` to a platform ``CreateMonitorRequest``.
 
-    Returned shape matches ``@invariance/api-types`` ``CreateMonitorRequest``:
+    Returned shape matches the currently-supported platform
+    ``CreateMonitorRequest`` subset:
     ``{name, description?, evaluator, severity, signal_type?, creates_review?}``.
+
+    The backend always creates a durable finding for monitor matches.
+    ``action.create_review()`` toggles review creation on top of that.
     """
     evaluator_body = _compile_rule_to_evaluator(spec.when)
+    scope, target = _compile_on_to_scope_target(spec.on)
 
     do_list = spec.do if isinstance(spec.do, list) else [spec.do]
     signal_action = next(
@@ -174,7 +211,7 @@ def compile_monitor(spec: MonitorSpec) -> dict[str, Any]:
     signal_type: str | None = (
         signal_action["type"] if signal_action and signal_action.get("type") else None
     )
-    creates_review = any(a.get("_kind") == "create_finding" for a in do_list)
+    creates_review = any(a.get("_kind") == "create_review" for a in do_list)
 
     body: dict[str, Any] = {
         "name": spec.name,
@@ -185,6 +222,9 @@ def compile_monitor(spec: MonitorSpec) -> dict[str, Any]:
         body["description"] = spec.description
     if signal_type is not None:
         body["signal_type"] = signal_type
+    body["scope"] = scope
+    if target is not None:
+        body["target"] = target
     if creates_review:
         body["creates_review"] = True
     return body

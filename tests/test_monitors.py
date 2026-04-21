@@ -46,6 +46,11 @@ def test_compile_field_contains_maps_to_keyword_evaluator():
         },
         "severity": "high",
         "signal_type": "pii",
+        "scope": "node",
+        "target": {
+            "kind": "agent_history",
+            "filters": [{"field": "action_type", "operator": "eq", "value": "tool.use"}],
+        },
     }
 
 
@@ -80,13 +85,30 @@ def test_compile_numeric_maps_to_threshold_evaluator():
     assert d["severity"] == "medium"
 
 
-def test_compile_create_finding_sets_creates_review():
+def test_compile_create_finding_does_not_imply_review_creation():
     d = compile_monitor(
         MonitorSpec(
             name="x",
             on=on.node(action_type="tool.use"),
             when=rule.field_contains("output", "bad"),
             do=action.create_finding(severity="critical", title="Bad", type="bad"),
+        )
+    )
+    assert "creates_review" not in d
+    assert d["signal_type"] == "bad"
+    assert d["severity"] == "critical"
+
+
+def test_compile_create_review_sets_creates_review():
+    d = compile_monitor(
+        MonitorSpec(
+            name="x",
+            on=on.node(action_type="tool.use"),
+            when=rule.field_contains("output", "bad"),
+            do=[
+                action.emit_signal(severity="critical", title="Bad", type="bad"),
+                action.create_review(),
+            ],
         )
     )
     assert d["creates_review"] is True

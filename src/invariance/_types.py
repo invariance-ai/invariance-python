@@ -55,6 +55,18 @@ class RunModel(TypedDict):
     created_at: str
     updated_at: str
     closed_at: str | None
+    parent_run_id: str | None
+    fork_point_node_id: str | None
+    replay_seed: str | None
+    total_input_tokens: int
+    total_output_tokens: int
+    total_cache_read: int
+    total_cache_write: int
+    total_cost_usd: float
+    llm_call_count: int
+    tool_call_count: int
+    error_count: int
+    total_latency_ms: int
 
 
 # ── Nodes ──────────────────────────────────────────────────────────────────
@@ -78,6 +90,9 @@ class Node(TypedDict):
     previous_hashes: list[str]
     signature: str | None
     created_at: str
+    handoff_from: str | None
+    handoff_to: str | None
+    handoff_reason: str | None
 
 
 # ── Proofs ─────────────────────────────────────────────────────────────────
@@ -134,6 +149,8 @@ class Monitor(TypedDict):
     schedule: MonitorSchedule
     creates_review: bool
     signal_type: str | None
+    scope: str | None
+    target: dict[str, Any] | None
     last_run_at: str | None
     next_run_at: str | None
     created_at: str
