@@ -72,7 +72,7 @@ signals = inv.signals.list()
 reviews = inv.reviews.list()
 ```
 
-Python `review=True` maps to backend `creates_review=True`.
+Python review creation maps to backend `creates_review=True`.
 
 ## Modules
 
