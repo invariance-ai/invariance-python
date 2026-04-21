@@ -54,6 +54,7 @@ class on:
     filtering. They do not change the compiled ``CreateMonitorRequest``.
     """
 
+    # Legacy alias retained for older callers; new code should prefer ``on.run(...)``.
     @staticmethod
     def session(*, id: str | None = None, tags: list[str] | None = None) -> dict[str, Any]:
         return {"_scope": "session", "id": id, "tags": tags}
@@ -167,7 +168,7 @@ def _compile_on_to_scope_target(spec: dict[str, Any]) -> tuple[str, dict[str, An
     scope = spec.get("_scope")
     if scope == "session":
         run_id = spec.get("id")
-        return "session", {"kind": "specific_run", "run_id": run_id} if run_id else {"kind": "current_run"}
+        return "run", {"kind": "specific_run", "run_id": run_id} if run_id else {"kind": "current_run"}
     if scope == "run":
         run_id = spec.get("id")
         return "run", {"kind": "specific_run", "run_id": run_id} if run_id else {"kind": "current_run"}

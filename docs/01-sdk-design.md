@@ -44,7 +44,7 @@ Do not include:
 
 Use `run` in Python.
 
-Backend `session_id` should be available, but the developer-facing object is a run.
+Backend should use `run` naming as well. Older `session` naming is legacy.
 
 Use `node`, not `trace_node`, in public API names.
 
@@ -95,6 +95,6 @@ Useful legacy files:
 ../_archive/invariance-sdk-legacy/packages/python/invariance/resources/signals.py
 ```
 
-Port only the run/session ergonomics and HTTP resource ideas.
+Port only the run ergonomics and HTTP resource ideas.
 
 Do not port old advanced modules until the MVP dry run passes.
