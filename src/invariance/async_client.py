@@ -46,6 +46,7 @@ from .client import InvarianceApiError
 from .monitors import MonitorSpec, compile_monitor
 from ._internal import build_node_body, now_ms as _now_ms, random_node_id as _random_node_id
 from ._query import with_query
+from .handoff_token import HandoffToken, build_handoff_token
 
 DEFAULT_API_URL = "https://api.useinvariance.com"
 BATCH_MAX = 100
@@ -106,6 +107,9 @@ class AsyncStep:
         metadata: dict[str, Any] | None = None,
         custom_fields: dict[str, Any] | None = None,
         type: str | None = None,
+        handoff_from: str | None = None,
+        handoff_to: str | None = None,
+        handoff_reason: str | None = None,
     ) -> None:
         self._run = run
         self.action_type = action_type
@@ -115,6 +119,9 @@ class AsyncStep:
         self.error: Any | None = None
         self.metadata = dict(metadata) if metadata else None
         self.custom_fields = dict(custom_fields) if custom_fields else None
+        self.handoff_from = handoff_from
+        self.handoff_to = handoff_to
+        self.handoff_reason = handoff_reason
         self.id = _random_node_id()
         self._parent_id: str | None = None
         self._start_ms: int | None = None
@@ -148,6 +155,9 @@ class AsyncStep:
                 parent_id=self._parent_id,
                 timestamp=self._start_ms,
                 duration_ms=duration_ms,
+                handoff_from=self.handoff_from,
+                handoff_to=self.handoff_to,
+                handoff_reason=self.handoff_reason,
             )
         finally:
             if self._token is not None:
@@ -209,6 +219,9 @@ class AsyncRun:
         metadata: dict[str, Any] | None = None,
         custom_fields: dict[str, Any] | None = None,
         type: str | None = None,
+        handoff_from: str | None = None,
+        handoff_to: str | None = None,
+        handoff_reason: str | None = None,
     ) -> AsyncStep:
         return AsyncStep(
             self,
@@ -218,6 +231,45 @@ class AsyncRun:
             metadata=metadata,
             custom_fields=custom_fields,
             type=type,
+            handoff_from=handoff_from,
+            handoff_to=handoff_to,
+            handoff_reason=handoff_reason,
+        )
+
+    async def handoff(
+        self,
+        to_agent_id: str,
+        *,
+        message: Any | None = None,
+        reason: str | None = None,
+        from_agent_id: str | None = None,
+    ) -> HandoffToken | None:
+        """Emit a 'handoff' node marking delegation to another agent.
+
+        Mirrors :meth:`invariance.runs.Run.handoff`. Returns a signed
+        :class:`HandoffToken` when the run is signed; ``None`` otherwise.
+        """
+        issuer_agent_id = from_agent_id or self._session.get("agent_id")
+        async with self.step(
+            "handoff",
+            type="handoff",
+            input={"message": message} if message is not None else None,
+            handoff_from=issuer_agent_id,
+            handoff_to=to_agent_id,
+            handoff_reason=reason,
+        ):
+            pass
+        if not self._signing_key or self._last_hash is None or self._last_node_id is None:
+            return None
+        await self.flush()
+        return build_handoff_token(
+            iss_agent_id=issuer_agent_id,
+            iss_run_id=self.run_id,
+            handoff_node_id=self._last_node_id,
+            handoff_node_hash=self._last_hash,
+            to_agent_id=to_agent_id,
+            signing_key=self._signing_key,
+            iat_ms=_now_ms(),
         )
 
     async def _emit(
@@ -234,6 +286,9 @@ class AsyncRun:
         parent_id: str | None,
         timestamp: int | None,
         duration_ms: int | None,
+        handoff_from: str | None = None,
+        handoff_to: str | None = None,
+        handoff_reason: str | None = None,
     ) -> None:
         async with self._lock:
             body, self._last_hash = build_node_body(
@@ -244,6 +299,9 @@ class AsyncRun:
                 id=id,
                 action_type=action_type,
                 type=type,
+                handoff_from=handoff_from,
+                handoff_to=handoff_to,
+                handoff_reason=handoff_reason,
                 input=input,
                 output=output,
                 error=error,

@@ -121,3 +121,27 @@ async def test_async_trace_decorator():
     assert nodes[0]["action_type"] == "fetch"
     assert nodes[0]["input"] == {"x": 7}
     assert nodes[0]["output"] == 14
+
+
+@pytest.mark.asyncio
+async def test_async_handoff_fields_emit():
+    inv, calls = _async_inv_with_capture()
+    async with inv:
+        async with await inv.runs.start() as run:
+            async with run.step(
+                "delegate",
+                handoff_from="a_1",
+                handoff_to="a_2",
+                handoff_reason="needs research",
+            ):
+                pass
+            token = await run.handoff("a_3", reason="hand over", message={"ctx": 1})
+
+    nodes = [c for c in calls if c["path"] == "/v1/nodes"][0]["body"]
+    assert nodes[0]["handoff_to"] == "a_2"
+    assert nodes[0]["handoff_from"] == "a_1"
+    assert nodes[0]["handoff_reason"] == "needs research"
+    assert nodes[1]["action_type"] == "handoff"
+    assert nodes[1]["handoff_to"] == "a_3"
+    assert nodes[1]["handoff_reason"] == "hand over"
+    assert token is None
