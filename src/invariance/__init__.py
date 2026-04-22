@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from .client import HttpClient, InvarianceApiError
+from .client import HttpClient, InvarianceApiError, RateLimitError
+from ._retry import RetryPolicy
 from .config import DEFAULT_API_URL, Features, ResolvedConfig, resolve_config
 from .runs import Run, RunsResource, Step
 from .nodes import NodesResource
@@ -48,6 +49,8 @@ from .crypto import (
 __all__ = [
     "Invariance",
     "InvarianceApiError",
+    "RateLimitError",
+    "RetryPolicy",
     "Features",
     "ResolvedConfig",
     "resolve_config",
@@ -104,6 +107,7 @@ class Invariance:
         *,
         signing_key: str | None = None,
         features: dict[str, bool] | None = None,
+        retry_policy: RetryPolicy | None = None,
     ) -> None:
         cfg = resolve_config(
             api_key=api_key,
@@ -113,7 +117,7 @@ class Invariance:
         )
         self.config = cfg
         self.features = cfg.features
-        self._http = HttpClient(cfg.api_url, cfg.api_key)
+        self._http = HttpClient(cfg.api_url, cfg.api_key, retry_policy=retry_policy)
         self.runs = RunsResource(self._http, cfg.signing_key, features=cfg.features)
         self.nodes = NodesResource(self._http)
         self.agents = AgentsResource(self._http)
