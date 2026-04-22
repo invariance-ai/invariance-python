@@ -734,10 +734,15 @@ class AsyncInvariance:
         api_url: str | None = None,
         *,
         signing_key: str | None = None,
+        retry_policy: RetryPolicy | None = None,
     ) -> None:
         if not api_key:
             raise ValueError("api_key is required")
-        self._http = AsyncHttpClient(api_url or DEFAULT_API_URL, api_key)
+        self._http = AsyncHttpClient(
+            api_url or DEFAULT_API_URL,
+            api_key,
+            retry_policy=retry_policy,
+        )
         self.runs = AsyncRunsResource(self._http, signing_key)
         self.nodes = AsyncNodesResource(self._http)
         self.agents = AsyncAgentsResource(self._http)

@@ -54,6 +54,18 @@ def test_non_retryable_4xx_is_not_retried():
     assert calls["n"] == 1
 
 
+def test_top_level_client_accepts_retry_policy():
+    inv = Invariance(
+        api_key="inv_test_abc",
+        api_url="http://test.local",
+        retry_policy=RetryPolicy(max_retries=7, base_seconds=0.0, jitter=0.0),
+    )
+    try:
+        assert inv._http._retry.max_retries == 7
+    finally:
+        inv.close()
+
+
 def test_retries_on_5xx():
     calls = {"n": 0}
 
@@ -90,3 +102,16 @@ async def test_async_retries_on_429():
     finally:
         await inv.aclose()
     assert calls["n"] == 2
+
+
+@pytest.mark.asyncio
+async def test_async_top_level_client_accepts_retry_policy():
+    inv = AsyncInvariance(
+        api_key="inv_test_abc",
+        api_url="http://test.local",
+        retry_policy=RetryPolicy(max_retries=5, base_seconds=0.0, jitter=0.0),
+    )
+    try:
+        assert inv._http._retry.max_retries == 5
+    finally:
+        await inv.aclose()
