@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import httpx
+
+from ._retry import RetryPolicy, backoff_delay, parse_retry_after, should_retry
 
 
 class InvarianceApiError(Exception):
@@ -21,16 +24,36 @@ class InvarianceApiError(Exception):
         self.request_id = request_id
 
 
+class RateLimitError(InvarianceApiError):
+    """Raised when the server returned 429 and retries are exhausted."""
+
+
 class HttpClient:
-    def __init__(self, base_url: str, api_key: str) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        *,
+        retry_policy: RetryPolicy | None = None,
+    ) -> None:
         self._client = httpx.Client(
             base_url=base_url,
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=30.0,
         )
+        self._retry = retry_policy or RetryPolicy()
 
     def request(self, method: str, path: str, *, json: Any | None = None) -> Any:
-        res = self._client.request(method, path, json=json)
+        last_status = 0
+        for attempt in range(self._retry.max_retries + 1):
+            res = self._client.request(method, path, json=json)
+            if res.status_code < 400 or not should_retry(res.status_code):
+                break
+            last_status = res.status_code
+            if attempt >= self._retry.max_retries:
+                break
+            retry_after = parse_retry_after(res.headers.get("Retry-After"))
+            time.sleep(backoff_delay(self._retry, attempt + 1, retry_after))
         if res.status_code >= 400:
             body: dict[str, Any] = {}
             try:
@@ -38,7 +61,8 @@ class HttpClient:
             except Exception:
                 pass
             err = body.get("error", {})
-            raise InvarianceApiError(
+            cls = RateLimitError if last_status == 429 else InvarianceApiError
+            raise cls(
                 status=res.status_code,
                 code=err.get("code", "unknown"),
                 message=err.get("message", f"HTTP {res.status_code}"),

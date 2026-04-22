@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from .client import HttpClient, InvarianceApiError
+from .client import HttpClient, InvarianceApiError, RateLimitError
+from ._retry import RetryPolicy
 from .config import DEFAULT_API_URL, Features, ResolvedConfig, resolve_config
 from .runs import Run, RunsResource, Step
 from .nodes import NodesResource
@@ -48,6 +49,8 @@ from .crypto import (
 __all__ = [
     "Invariance",
     "InvarianceApiError",
+    "RateLimitError",
+    "RetryPolicy",
     "Features",
     "ResolvedConfig",
     "resolve_config",

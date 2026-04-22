@@ -42,7 +42,8 @@ from ._types import (
     Signal,
     SignalList,
 )
-from .client import InvarianceApiError
+from .client import InvarianceApiError, RateLimitError
+from ._retry import RetryPolicy, backoff_delay, parse_retry_after, should_retry
 from .monitors import MonitorSpec, compile_monitor
 from ._internal import build_node_body, now_ms as _now_ms, random_node_id as _random_node_id
 from ._query import with_query
@@ -58,15 +59,31 @@ _current_async_step: contextvars.ContextVar["AsyncStep | None"] = contextvars.Co
 
 
 class AsyncHttpClient:
-    def __init__(self, base_url: str, api_key: str) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        *,
+        retry_policy: RetryPolicy | None = None,
+    ) -> None:
         self._client = httpx.AsyncClient(
             base_url=base_url,
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=30.0,
         )
+        self._retry = retry_policy or RetryPolicy()
 
     async def request(self, method: str, path: str, *, json: Any | None = None) -> Any:
-        res = await self._client.request(method, path, json=json)
+        last_status = 0
+        for attempt in range(self._retry.max_retries + 1):
+            res = await self._client.request(method, path, json=json)
+            if res.status_code < 400 or not should_retry(res.status_code):
+                break
+            last_status = res.status_code
+            if attempt >= self._retry.max_retries:
+                break
+            retry_after = parse_retry_after(res.headers.get("Retry-After"))
+            await asyncio.sleep(backoff_delay(self._retry, attempt + 1, retry_after))
         if res.status_code >= 400:
             body: dict[str, Any] = {}
             try:
@@ -74,7 +91,8 @@ class AsyncHttpClient:
             except Exception:
                 pass
             err = body.get("error", {})
-            raise InvarianceApiError(
+            cls = RateLimitError if last_status == 429 else InvarianceApiError
+            raise cls(
                 status=res.status_code,
                 code=err.get("code", "unknown"),
                 message=err.get("message", f"HTTP {res.status_code}"),
