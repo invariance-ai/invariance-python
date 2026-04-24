@@ -4,13 +4,31 @@ build-backend = "hatchling.build"
 
 [project]
 name = "invariance-sdk"
-version = "0.0.0"
-description = "Clean MVP Python SDK for Invariance."
+version = "0.1.0"
+description = "Official Python SDK for the Invariance AI platform."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
-authors = [{ name = "Invariance" }]
+license-files = ["LICENSE"]
+authors = [{ name = "Invariance AI", email = "hello@invariance.ai" }]
+keywords = ["invariance", "sdk", "ai", "monitoring", "observability"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = ["httpx>=0.27", "pynacl>=1.5"]
+
+[project.urls]
+Homepage = "https://github.com/invariance-ai/invariance-python"
+Repository = "https://github.com/invariance-ai/invariance-python"
+Issues = "https://github.com/invariance-ai/invariance-python/issues"
+Changelog = "https://github.com/invariance-ai/invariance-python/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
@@ -23,4 +41,3 @@ dev = [
     "pytest-asyncio>=1.3.0",
     "respx>=0.23.1",
 ]
-
