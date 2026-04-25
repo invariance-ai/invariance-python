@@ -15,7 +15,7 @@ from .monitors import (
     rule,
     action,
 )
-from .node_types import NodeType, define_node_type
+from .node_types import NodeType, NodeTypesResource, define_node_type
 from .signals import SignalType, SignalsResource, define_signal_type
 from .proofs import ProofsResource
 from .findings import FindingsResource
@@ -28,6 +28,7 @@ from .async_client import (
     AsyncMonitorsResource,
     AsyncNarrativesResource,
     AsyncNodesResource,
+    AsyncNodeTypesResource,
     AsyncProofsResource,
     AsyncReviewsResource,
     AsyncRun,
@@ -64,6 +65,7 @@ __all__ = [
     "AsyncRunsResource",
     "AsyncStep",
     "AsyncNodesResource",
+    "AsyncNodeTypesResource",
     "AsyncAgentsResource",
     "AsyncMonitorsResource",
     "AsyncSignalsResource",
@@ -80,6 +82,7 @@ __all__ = [
     "rule",
     "action",
     "NodeType",
+    "NodeTypesResource",
     "define_node_type",
     "SignalType",
     "SignalsResource",
@@ -120,6 +123,7 @@ class Invariance:
         self._http = HttpClient(cfg.api_url, cfg.api_key, retry_policy=retry_policy)
         self.runs = RunsResource(self._http, cfg.signing_key, features=cfg.features)
         self.nodes = NodesResource(self._http)
+        self.node_types = NodeTypesResource(self._http)
         self.agents = AgentsResource(self._http)
         self.monitors = MonitorsResource(self._http)
         self.signals = SignalsResource(self._http)

@@ -48,6 +48,11 @@ from .monitors import MonitorSpec, compile_monitor
 from ._internal import build_node_body, now_ms as _now_ms, random_node_id as _random_node_id
 from ._query import with_query
 from .handoff_token import HandoffToken, build_handoff_token
+from .node_types import (
+    NodeTypeAggregationHints,
+    NodeTypeRecord,
+    NodeTypeSchema,
+)
 
 DEFAULT_API_URL = "https://api.useinvariance.com"
 BATCH_MAX = 100
@@ -727,6 +732,35 @@ class AsyncNarrativesResource:
         return res["narrative"]
 
 
+class AsyncNodeTypesResource:
+    """Async parity for ``inv.node_types`` — wraps ``/v1/node-types`` CRUD."""
+
+    def __init__(self, http: AsyncHttpClient) -> None:
+        self._http = http
+
+    async def list(self) -> list[NodeTypeRecord]:
+        res = await self._http.get("/v1/node-types")
+        return res["data"]
+
+    async def register(
+        self,
+        name: str,
+        *,
+        display_name: str | None = None,
+        custom_fields_schema: NodeTypeSchema | None = None,
+        aggregation_hints: NodeTypeAggregationHints | None = None,
+    ) -> NodeTypeRecord:
+        body: dict[str, Any] = {"name": name}
+        if display_name is not None:
+            body["display_name"] = display_name
+        if custom_fields_schema is not None:
+            body["custom_fields_schema"] = custom_fields_schema
+        if aggregation_hints is not None:
+            body["aggregation_hints"] = aggregation_hints
+        res = await self._http.post("/v1/node-types", json=body)
+        return res["node_type"]
+
+
 class AsyncInvariance:
     def __init__(
         self,
@@ -745,6 +779,7 @@ class AsyncInvariance:
         )
         self.runs = AsyncRunsResource(self._http, signing_key)
         self.nodes = AsyncNodesResource(self._http)
+        self.node_types = AsyncNodeTypesResource(self._http)
         self.agents = AsyncAgentsResource(self._http)
         self.monitors = AsyncMonitorsResource(self._http)
         self.signals = AsyncSignalsResource(self._http)

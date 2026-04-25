@@ -18,9 +18,37 @@ only — no runtime validation — but IDE/type-checkers narrow
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, TypedDict, TypeVar
+
+from .client import HttpClient
 
 T = TypeVar("T", bound=dict)
+
+
+class NodeTypeFieldMap(TypedDict, total=False):
+    pass  # ``{field_name: "string" | "number" | "boolean" | "object" | "array"}`` — kept loose for forward-compat.
+
+
+class NodeTypeSchema(TypedDict, total=False):
+    required: list[str]
+    field_types: dict[str, str]
+
+
+class NodeTypeAggregationHints(TypedDict, total=False):
+    key_field: str
+    status_field: str
+    aggregate_fields: list[str]
+
+
+class NodeTypeRecord(TypedDict):
+    id: str
+    project_id: str | None
+    name: str
+    display_name: str
+    custom_fields_schema: NodeTypeSchema
+    aggregation_hints: NodeTypeAggregationHints
+    created_at: str
+    updated_at: str
 
 
 @dataclass(frozen=True)
@@ -68,3 +96,32 @@ def define_node_type(type: str, _schema: type | None = None) -> NodeType:
     at runtime.
     """
     return NodeType(type)
+
+
+class NodeTypesResource:
+    """Server-backed CRUD for the ``/v1/node-types`` registry (parity with TS ``inv.nodeTypes``)."""
+
+    def __init__(self, http: HttpClient) -> None:
+        self._http = http
+
+    def list(self) -> list[NodeTypeRecord]:
+        res = self._http.get("/v1/node-types")
+        return res["data"]
+
+    def register(
+        self,
+        name: str,
+        *,
+        display_name: str | None = None,
+        custom_fields_schema: NodeTypeSchema | None = None,
+        aggregation_hints: NodeTypeAggregationHints | None = None,
+    ) -> NodeTypeRecord:
+        body: dict[str, Any] = {"name": name}
+        if display_name is not None:
+            body["display_name"] = display_name
+        if custom_fields_schema is not None:
+            body["custom_fields_schema"] = custom_fields_schema
+        if aggregation_hints is not None:
+            body["aggregation_hints"] = aggregation_hints
+        res = self._http.post("/v1/node-types", json=body)
+        return res["node_type"]
