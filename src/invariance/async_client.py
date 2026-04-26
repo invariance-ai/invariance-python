@@ -43,6 +43,7 @@ from ._types import (
     SignalList,
 )
 from .client import InvarianceApiError, RateLimitError
+from .config import resolve_config
 from ._retry import RetryPolicy, backoff_delay, parse_retry_after, should_retry
 from .monitors import MonitorSpec, compile_monitor
 from ._internal import build_node_body, now_ms as _now_ms, random_node_id as _random_node_id
@@ -730,20 +731,27 @@ class AsyncNarrativesResource:
 class AsyncInvariance:
     def __init__(
         self,
-        api_key: str,
+        api_key: str | None = None,
         api_url: str | None = None,
         *,
         signing_key: str | None = None,
+        features: dict[str, bool] | None = None,
         retry_policy: RetryPolicy | None = None,
     ) -> None:
-        if not api_key:
-            raise ValueError("api_key is required")
+        cfg = resolve_config(
+            api_key=api_key,
+            api_url=api_url,
+            signing_key=signing_key,
+            features=features,
+        )
+        self.config = cfg
+        self.features = cfg.features
         self._http = AsyncHttpClient(
-            api_url or DEFAULT_API_URL,
-            api_key,
+            cfg.api_url,
+            cfg.api_key,
             retry_policy=retry_policy,
         )
-        self.runs = AsyncRunsResource(self._http, signing_key)
+        self.runs = AsyncRunsResource(self._http, cfg.signing_key)
         self.nodes = AsyncNodesResource(self._http)
         self.agents = AsyncAgentsResource(self._http)
         self.monitors = AsyncMonitorsResource(self._http)
@@ -755,6 +763,9 @@ class AsyncInvariance:
 
     async def aclose(self) -> None:
         await self._http.aclose()
+
+    # Parity alias with sync Invariance.close(). Async-correct: must be awaited.
+    close = aclose
 
     async def __aenter__(self) -> "AsyncInvariance":
         return self
