@@ -20,6 +20,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Generic, TypeVar
 
+from .client import HttpClient
+
 T = TypeVar("T", bound=dict)
 
 
@@ -68,3 +70,57 @@ def define_node_type(type: str, _schema: type | None = None) -> NodeType:
     at runtime.
     """
     return NodeType(type)
+
+
+# ── Registry API ────────────────────────────────────────────────────────────
+
+
+def _build_register_body(
+    name: str,
+    *,
+    display_name: str | None = None,
+    custom_fields_schema: dict[str, Any] | None = None,
+    aggregation_hints: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    body: dict[str, Any] = {"name": name}
+    if display_name is not None:
+        body["display_name"] = display_name
+    if custom_fields_schema is not None:
+        body["custom_fields_schema"] = custom_fields_schema
+    if aggregation_hints is not None:
+        body["aggregation_hints"] = aggregation_hints
+    return body
+
+
+class NodeTypesResource:
+    """Project-scoped registry of custom node types.
+
+    Mirrors the TS ``inv.nodeTypes`` resource — declarative type names,
+    optional ``custom_fields`` schema, and aggregation hints used by
+    Monitors. Schema is informational; the platform does not enforce
+    field types at write time.
+    """
+
+    def __init__(self, http: HttpClient) -> None:
+        self._http = http
+
+    def list(self) -> list[dict[str, Any]]:
+        res = self._http.get("/v1/node-types")
+        return res["data"]
+
+    def register(
+        self,
+        name: str,
+        *,
+        display_name: str | None = None,
+        custom_fields_schema: dict[str, Any] | None = None,
+        aggregation_hints: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        body = _build_register_body(
+            name,
+            display_name=display_name,
+            custom_fields_schema=custom_fields_schema,
+            aggregation_hints=aggregation_hints,
+        )
+        res = self._http.post("/v1/node-types", json=body)
+        return res["node_type"]
