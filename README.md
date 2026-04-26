@@ -10,10 +10,10 @@ Part of the Invariance SDK family:
 
 ## Install
 
-Install from a tagged release:
+Install from the GitHub repository (no PyPI release yet):
 
 ```bash
-pip install "invariance-sdk @ git+https://github.com/invariance-ai/invariance-python@v0.1.0"
+pip install "invariance-sdk @ git+https://github.com/invariance-ai/invariance-python@main"
 ```
 
 Requires Python >= 3.10.
@@ -55,7 +55,7 @@ The SDK is run-first:
 
 | Resource | Purpose |
 | --- | --- |
-| `inv.runs` | Start, list, inspect, verify runs. |
+| `inv.runs` | Start, list, get, verify runs. |
 | `inv.nodes` | Write nodes (trace events) and list them by run. |
 | `inv.monitors` | Create, update, and evaluate simple monitors. |
 | `inv.signals` | List and acknowledge monitor-emitted signals. |
