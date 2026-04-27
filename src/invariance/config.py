@@ -10,6 +10,10 @@ DEFAULT_API_URL = "https://api.useinvariance.com"
 class Features:
     replay: bool = False
     cost_tracking: bool = True
+    # Master switch for trace emission (steps, nodes, llm_calls). Defaults
+    # to True whenever an API key is configured. Set INVARIANCE_TRACE=0 to
+    # disable all observability without removing the SDK from your app.
+    tracing: bool = True
 
 
 @dataclass(frozen=True)
@@ -43,10 +47,11 @@ def resolve_config(
     f = features or {}
     replay = f["replay"] if "replay" in f else _env_bool("INVARIANCE_FEATURE_REPLAY", False)
     cost = f["cost_tracking"] if "cost_tracking" in f else _env_bool("INVARIANCE_COST_TRACKING", True)
+    tracing = f["tracing"] if "tracing" in f else _env_bool("INVARIANCE_TRACE", True)
 
     return ResolvedConfig(
         api_key=key,
         api_url=url,
         signing_key=sig,
-        features=Features(replay=replay, cost_tracking=cost),
+        features=Features(replay=replay, cost_tracking=cost, tracing=tracing),
     )
