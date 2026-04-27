@@ -728,6 +728,35 @@ class AsyncNarrativesResource:
         return res["narrative"]
 
 
+class AsyncNodeTypesResource:
+    """Async sibling of :class:`invariance.NodeTypesResource`."""
+
+    def __init__(self, http: AsyncHttpClient) -> None:
+        self._http = http
+
+    async def list(self) -> list[dict[str, Any]]:
+        res = await self._http.get("/v1/node-types")
+        return res["data"]
+
+    async def register(
+        self,
+        name: str,
+        *,
+        display_name: str | None = None,
+        custom_fields_schema: dict[str, Any] | None = None,
+        aggregation_hints: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"name": name}
+        if display_name is not None:
+            body["display_name"] = display_name
+        if custom_fields_schema is not None:
+            body["custom_fields_schema"] = custom_fields_schema
+        if aggregation_hints is not None:
+            body["aggregation_hints"] = aggregation_hints
+        res = await self._http.post("/v1/node-types", json=body)
+        return res["node_type"]
+
+
 class AsyncInvariance:
     def __init__(
         self,
@@ -760,6 +789,7 @@ class AsyncInvariance:
         self.findings = AsyncFindingsResource(self._http)
         self.reviews = AsyncReviewsResource(self._http)
         self.narratives = AsyncNarrativesResource(self._http)
+        self.node_types = AsyncNodeTypesResource(self._http)
 
     async def aclose(self) -> None:
         await self._http.aclose()

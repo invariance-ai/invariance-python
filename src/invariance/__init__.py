@@ -15,7 +15,7 @@ from .monitors import (
     rule,
     action,
 )
-from .node_types import NodeType, define_node_type
+from .node_types import NodeType, NodeTypesResource, define_node_type
 from .signals import SignalType, SignalsResource, define_signal_type
 from .proofs import ProofsResource
 from .findings import FindingsResource
@@ -28,6 +28,7 @@ from .async_client import (
     AsyncMonitorsResource,
     AsyncNarrativesResource,
     AsyncNodesResource,
+    AsyncNodeTypesResource,
     AsyncProofsResource,
     AsyncReviewsResource,
     AsyncRun,
@@ -80,6 +81,8 @@ __all__ = [
     "rule",
     "action",
     "NodeType",
+    "NodeTypesResource",
+    "AsyncNodeTypesResource",
     "define_node_type",
     "SignalType",
     "SignalsResource",
@@ -127,6 +130,7 @@ class Invariance:
         self.findings = FindingsResource(self._http)
         self.reviews = ReviewsResource(self._http)
         self.narratives = NarrativesResource(self._http)
+        self.node_types = NodeTypesResource(self._http)
 
     def close(self) -> None:
         self._http.close()
