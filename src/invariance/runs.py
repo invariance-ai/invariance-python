@@ -132,6 +132,7 @@ class Run:
         session: dict[str, Any],
         signing_key: str | None = None,
         buffered: bool = True,
+        tracing: bool = True,
     ) -> None:
         self._http = http
         self._session = session
@@ -143,6 +144,7 @@ class Run:
         self._lock = threading.Lock()
         self._closed = False
         self._signals = SignalsResource(http)
+        self._tracing = tracing
 
     @property
     def run_id(self) -> str:
@@ -263,6 +265,8 @@ class Run:
         handoff_to: str | None = None,
         handoff_reason: str | None = None,
     ) -> None:
+        if not self._tracing:
+            return
         with self._lock:
             body, self._last_hash = build_node_body(
                 run_id=self.run_id,
@@ -395,6 +399,7 @@ class RunsResource:
             res["run"],
             signing_key or self._signing_key,
             buffered=buffered,
+            tracing=self._features.tracing,
         )
 
     def fork(
