@@ -124,6 +124,28 @@ async def test_async_trace_decorator():
 
 
 @pytest.mark.asyncio
+async def test_async_monitors_delete_sends_delete_and_handles_204():
+    seen: dict = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen["method"] = request.method
+        seen["path"] = request.url.path
+        return httpx.Response(204)
+
+    transport = httpx.MockTransport(handler)
+    inv = AsyncInvariance(api_key="inv_test", api_url="http://test.local")
+    inv._http._client = httpx.AsyncClient(
+        base_url="http://test.local",
+        headers={"Authorization": "Bearer inv_test"},
+        transport=transport,
+    )
+    async with inv:
+        result = await inv.monitors.delete("mon_42")
+    assert result is None
+    assert seen == {"method": "DELETE", "path": "/v1/monitors/mon_42"}
+
+
+@pytest.mark.asyncio
 async def test_async_handoff_fields_emit():
     inv, calls = _async_inv_with_capture()
     async with inv:

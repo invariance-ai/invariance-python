@@ -100,6 +100,8 @@ class AsyncHttpClient:
                 details=err.get("details"),
                 request_id=err.get("request_id"),
             )
+        if res.status_code == 204 or not res.content:
+            return None
         return res.json()
 
     async def get(self, path: str) -> Any:
@@ -110,6 +112,9 @@ class AsyncHttpClient:
 
     async def patch(self, path: str, json: Any | None = None) -> Any:
         return await self.request("PATCH", path, json=json)
+
+    async def delete(self, path: str) -> Any:
+        return await self.request("DELETE", path)
 
     async def aclose(self) -> None:
         await self._client.aclose()
@@ -556,6 +561,9 @@ class AsyncMonitorsResource:
 
     async def resume(self, id: str) -> Monitor:
         return await self.update(id, enabled=True)
+
+    async def delete(self, id: str) -> None:
+        await self._http.delete(f"/v1/monitors/{id}")
 
     async def evaluate(
         self,
