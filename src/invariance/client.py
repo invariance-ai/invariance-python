@@ -69,6 +69,8 @@ class HttpClient:
                 details=err.get("details"),
                 request_id=err.get("request_id"),
             )
+        if res.status_code == 204 or not res.content:
+            return None
         return res.json()
 
     def get(self, path: str) -> Any:
@@ -79,6 +81,9 @@ class HttpClient:
 
     def patch(self, path: str, json: Any | None = None) -> Any:
         return self.request("PATCH", path, json=json)
+
+    def delete(self, path: str) -> Any:
+        return self.request("DELETE", path)
 
     def close(self) -> None:
         self._client.close()

@@ -215,3 +215,17 @@ def test_monitors_pause_and_resume_delegate_to_update():
     inv.monitors.resume("mon_1")
     assert calls[0]["body"] == {"enabled": False}
     assert calls[1]["body"] == {"enabled": True}
+
+
+def test_monitors_delete_sends_delete_and_handles_204():
+    seen: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["method"] = request.method
+        seen["path"] = request.url.path
+        return httpx.Response(204)
+
+    inv = _client_with_handler(handler)
+    result = inv.monitors.delete("mon_42")
+    assert result is None
+    assert seen == {"method": "DELETE", "path": "/v1/monitors/mon_42"}

@@ -289,6 +289,9 @@ class MonitorsResource:
     def resume(self, id: str) -> Monitor:
         return self.update(id, enabled=True)
 
+    def delete(self, id: str) -> None:
+        self._http.delete(f"/v1/monitors/{id}")
+
     def evaluate(
         self,
         id: str,
