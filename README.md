@@ -64,6 +64,27 @@ The SDK is run-first:
 | `inv.agents` | Identity + key registration. |
 | `inv.proofs` | Proof chain verification. |
 | `inv.narratives` | LLM-generated run summaries. |
+| `inv.kb` | Knowledge base — `create_page` / `list_pages` / `get_page` / `update_page` / `delete_page` and `*_session` / `list_messages` / `append_message`. |
+| `inv.ask` | Server-side agent loop with KB + run-context tools (`/v1/ask`). |
+
+### Intelligence: KB + Ask
+
+```python
+from invariance import Invariance
+
+inv = Invariance()  # uses INVARIANCE_API_KEY
+
+inv.kb.create_page(
+    path="wiki:auth-flow",
+    title="Auth flow",
+    body="Tokens are minted on /v1/auth/cli-token …",
+)
+
+reply = inv.ask.send("How does our auth flow work?")
+print(reply["final_text"])  # cites [[wiki:auth-flow]] and [run:r_…]
+```
+
+Same surface is available on `AsyncInvariance` via `await inv.kb.create_page(...)` and `await inv.ask.send(...)`.
 
 ## Configuration
 

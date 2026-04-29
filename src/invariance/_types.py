@@ -304,6 +304,83 @@ NarrativeProvider = Literal["anthropic", "openai", "google"]
 NarrativeScorer = str
 
 
+# ── Knowledge base + Ask ───────────────────────────────────────────────────
+
+
+KbPageKind = Literal["wiki", "run", "note"]
+AskRole = Literal["user", "assistant", "tool"]
+
+
+class KbPage(TypedDict):
+    id: str
+    agent_id: str
+    project_id: str
+    path: str
+    title: str
+    summary: str
+    body: str
+    kind: KbPageKind
+    created_at: str
+    updated_at: str
+
+
+class KbSession(TypedDict):
+    id: str
+    agent_id: str
+    project_id: str
+    title: str
+    model: str | None
+    created_at: str
+    updated_at: str
+
+
+class KbTextBlock(TypedDict):
+    type: Literal["text"]
+    text: str
+
+
+class KbToolUseBlock(TypedDict):
+    type: Literal["tool_use"]
+    id: str
+    name: str
+    input: Any
+
+
+class KbToolResultBlock(TypedDict, total=False):
+    type: Literal["tool_result"]
+    tool_use_id: str
+    content: str
+    is_error: bool
+
+
+AskContentBlock = KbTextBlock | KbToolUseBlock | KbToolResultBlock
+
+
+class KbMessage(TypedDict):
+    id: str
+    session_id: str
+    role: AskRole
+    content: str | list[AskContentBlock]
+    created_at: str
+
+
+class KbPageList(TypedDict):
+    data: list[KbPage]
+    next_cursor: str | None
+
+
+class KbSessionList(TypedDict):
+    data: list[KbSession]
+    next_cursor: str | None
+
+
+class AskResponse(TypedDict):
+    session: KbSession
+    messages: list[KbMessage]
+    final_text: str
+    turns: int
+
+
 class Narrative(TypedDict):
     run_id: str
     agent_id: str

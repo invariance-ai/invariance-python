@@ -20,12 +20,21 @@ import httpx
 from ._types import (
     Agent,
     AgentList,
+    AskContentBlock,
+    AskResponse,
+    AskRole,
     CreateAgentResponse,
     EvaluateMonitorResponse,
     Finding,
     FindingList,
     FindingStatus,
     GetMeResponse,
+    KbMessage,
+    KbPage,
+    KbPageKind,
+    KbPageList,
+    KbSession,
+    KbSessionList,
     Monitor,
     MonitorExecutionList,
     MonitorList,
@@ -765,6 +774,136 @@ class AsyncNodeTypesResource:
         return res["node_type"]
 
 
+class AsyncKbResource:
+    def __init__(self, http: AsyncHttpClient) -> None:
+        self._http = http
+
+    async def create_page(
+        self,
+        *,
+        path: str,
+        title: str,
+        body: str,
+        summary: str | None = None,
+        kind: KbPageKind | None = None,
+    ) -> KbPage:
+        payload: dict[str, Any] = {"path": path, "title": title, "body": body}
+        if summary is not None:
+            payload["summary"] = summary
+        if kind is not None:
+            payload["kind"] = kind
+        res = await self._http.post("/v1/kb/pages", json=payload)
+        return res["page"]
+
+    async def list_pages(
+        self,
+        *,
+        kind: KbPageKind | None = None,
+        search: str | None = None,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> KbPageList:
+        return await self._http.get(
+            with_query("/v1/kb/pages", kind=kind, search=search, cursor=cursor, limit=limit)
+        )
+
+    async def get_page(self, id: str) -> KbPage:
+        res = await self._http.get(f"/v1/kb/pages/{id}")
+        return res["page"]
+
+    async def update_page(
+        self,
+        id: str,
+        *,
+        title: str | None = None,
+        body: str | None = None,
+        summary: str | None = None,
+        kind: KbPageKind | None = None,
+    ) -> KbPage:
+        payload: dict[str, Any] = {}
+        if title is not None:
+            payload["title"] = title
+        if body is not None:
+            payload["body"] = body
+        if summary is not None:
+            payload["summary"] = summary
+        if kind is not None:
+            payload["kind"] = kind
+        res = await self._http.patch(f"/v1/kb/pages/{id}", json=payload)
+        return res["page"]
+
+    async def delete_page(self, id: str) -> None:
+        await self._http.delete(f"/v1/kb/pages/{id}")
+
+    async def create_session(
+        self,
+        *,
+        title: str | None = None,
+        model: str | None = None,
+    ) -> KbSession:
+        payload: dict[str, Any] = {}
+        if title is not None:
+            payload["title"] = title
+        if model is not None:
+            payload["model"] = model
+        res = await self._http.post("/v1/kb/sessions", json=payload)
+        return res["session"]
+
+    async def list_sessions(
+        self,
+        *,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> KbSessionList:
+        return await self._http.get(with_query("/v1/kb/sessions", cursor=cursor, limit=limit))
+
+    async def get_session(self, id: str) -> KbSession:
+        res = await self._http.get(f"/v1/kb/sessions/{id}")
+        return res["session"]
+
+    async def delete_session(self, id: str) -> None:
+        await self._http.delete(f"/v1/kb/sessions/{id}")
+
+    async def list_messages(self, id: str) -> list[KbMessage]:
+        res = await self._http.get(f"/v1/kb/sessions/{id}/messages")
+        return res["messages"]
+
+    async def append_message(
+        self,
+        id: str,
+        *,
+        content: str | list[AskContentBlock],
+        role: AskRole | None = None,
+    ) -> KbMessage:
+        payload: dict[str, Any] = {"content": content}
+        if role is not None:
+            payload["role"] = role
+        res = await self._http.post(f"/v1/kb/sessions/{id}/messages", json=payload)
+        return res["message"]
+
+
+class AsyncAskResource:
+    def __init__(self, http: AsyncHttpClient) -> None:
+        self._http = http
+
+    async def send(
+        self,
+        message: str,
+        *,
+        session_id: str | None = None,
+        model: str | None = None,
+        max_turns: int | None = None,
+    ) -> AskResponse:
+        payload: dict[str, Any] = {"message": message}
+        if session_id is not None:
+            payload["session_id"] = session_id
+        if model is not None:
+            payload["model"] = model
+        if max_turns is not None:
+            payload["max_turns"] = max_turns
+        return await self._http.post("/v1/ask", json=payload)
+
+
 class AsyncInvariance:
     def __init__(
         self,
@@ -798,6 +937,8 @@ class AsyncInvariance:
         self.reviews = AsyncReviewsResource(self._http)
         self.narratives = AsyncNarrativesResource(self._http)
         self.node_types = AsyncNodeTypesResource(self._http)
+        self.kb = AsyncKbResource(self._http)
+        self.ask = AsyncAskResource(self._http)
 
     async def aclose(self) -> None:
         await self._http.aclose()
