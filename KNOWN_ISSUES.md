@@ -5,7 +5,7 @@ Seeded from the 2026-04-25 cross-repo audit.
 | ID | Severity | Title | Test | Status |
 |----|----------|-------|------|--------|
 | PY-001 | low | 4 `# type: ignore` for decorator inference + optional numpy | n/a | accepted |
-| PY-002 | medium | Live integration test is env-gated and not wired into CI | `tests/test_integration.py` | in_progress |
+| PY-002 | medium | Live integration test is env-gated and not wired into CI | `tests/test_integration.py` | resolved (nightly) |
 
 ## Item details
 
@@ -21,4 +21,4 @@ Four occurrences:
 ### PY-002 — Live integration coverage is not in CI
 `tests/test_integration.py` now contains an executable MVP dry run gated behind `INVARIANCE_E2E=1` and `INVARIANCE_API_KEY`. Normal unit runs still skip it.
 
-Fix: wire CI to run the test against a local or staging platform service. Done when CI runs the env-gated suite green against a service in another job.
+Resolved: a nightly GitHub Actions job (`.github/workflows/e2e-nightly.yml`) runs the env-gated suite at 07:00 UTC against staging using the `INVARIANCE_E2E_API_KEY` and `INVARIANCE_E2E_API_URL` secrets. The job is also `workflow_dispatch`-able for ad-hoc verification.
