@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+import uuid
 from typing import Any
 
 import httpx
@@ -43,10 +44,24 @@ class HttpClient:
         )
         self._retry = retry_policy or RetryPolicy()
 
-    def request(self, method: str, path: str, *, json: Any | None = None) -> Any:
+    def request(
+        self,
+        method: str,
+        path: str,
+        *,
+        json: Any | None = None,
+        idempotency_key: str | None = None,
+    ) -> Any:
+        # Auto-attach an Idempotency-Key on mutating requests so retries against
+        # POST/PATCH/PUT/DELETE de-duplicate on the server. Generated once per
+        # call (not per retry attempt) — same key reused across retries.
+        headers: dict[str, str] | None = None
+        if method.upper() not in ("GET", "HEAD", "OPTIONS"):
+            headers = {"Idempotency-Key": idempotency_key or uuid.uuid4().hex}
+
         last_status = 0
         for attempt in range(self._retry.max_retries + 1):
-            res = self._client.request(method, path, json=json)
+            res = self._client.request(method, path, json=json, headers=headers)
             if res.status_code < 400 or not should_retry(res.status_code):
                 break
             last_status = res.status_code
@@ -76,14 +91,26 @@ class HttpClient:
     def get(self, path: str) -> Any:
         return self.request("GET", path)
 
-    def post(self, path: str, json: Any | None = None) -> Any:
-        return self.request("POST", path, json=json)
+    def post(
+        self,
+        path: str,
+        json: Any | None = None,
+        *,
+        idempotency_key: str | None = None,
+    ) -> Any:
+        return self.request("POST", path, json=json, idempotency_key=idempotency_key)
 
-    def patch(self, path: str, json: Any | None = None) -> Any:
-        return self.request("PATCH", path, json=json)
+    def patch(
+        self,
+        path: str,
+        json: Any | None = None,
+        *,
+        idempotency_key: str | None = None,
+    ) -> Any:
+        return self.request("PATCH", path, json=json, idempotency_key=idempotency_key)
 
-    def delete(self, path: str) -> Any:
-        return self.request("DELETE", path)
+    def delete(self, path: str, *, idempotency_key: str | None = None) -> Any:
+        return self.request("DELETE", path, idempotency_key=idempotency_key)
 
     def close(self) -> None:
         self._client.close()
