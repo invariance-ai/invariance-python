@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import time
+from typing import Any
+
 from ._types import Agent, AgentList, CreateAgentResponse, GetMeResponse
 from .client import HttpClient
 from ._query import with_query
+from .crypto import get_public_key, hash_key_rotation_payload, sign_ed25519
 
 
 class AgentsResource:
@@ -13,8 +17,40 @@ class AgentsResource:
         return self._http.get("/v1/agents/me")
 
     def set_public_key(self, public_key: str) -> Agent:
-        """Register or rotate the caller's Ed25519 public key (64-char hex)."""
+        """Register the caller's Ed25519 public key (bootstrap, 64-char hex).
+
+        Prefer ``rotate_key`` when the agent already has a registered key —
+        the backend rejects unsigned rotations.
+        """
         res = self._http.request("PUT", "/v1/agents/me/key", json={"public_key": public_key})
+        return res["agent"]
+
+    def rotate_key(self, new_private_key: str, prev_public_key: str | None = None) -> Agent:
+        """Rotate (or first-time register) this agent's Ed25519 public key with
+        a signed payload proving control of the **new** private key. Required
+        for rotation; recommended on bootstrap.
+        """
+        new_public_key = get_public_key(new_private_key)
+        me = self.me()
+        timestamp = int(time.time() * 1000)
+        payload: dict[str, Any] = {
+            "agent_id": me["agent"]["id"],
+            "new_public_key": new_public_key,
+            "prev_public_key": prev_public_key,
+            "timestamp": timestamp,
+        }
+        digest = hash_key_rotation_payload(payload)
+        signature = sign_ed25519(digest, new_private_key)
+        res = self._http.request(
+            "PUT",
+            "/v1/agents/me/key",
+            json={
+                "public_key": new_public_key,
+                "prev_public_key": prev_public_key,
+                "timestamp": timestamp,
+                "signature": signature,
+            },
+        )
         return res["agent"]
 
     def create(

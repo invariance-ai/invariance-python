@@ -13,7 +13,7 @@ import contextvars
 import functools
 import inspect
 import traceback
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, Literal, TypeVar
 
 import httpx
 
@@ -58,6 +58,7 @@ from .monitors import MonitorSpec, compile_monitor
 from ._internal import build_node_body, now_ms as _now_ms, random_node_id as _random_node_id
 from ._query import with_query
 from .handoff_token import HandoffToken, build_handoff_token
+from .crypto import hash_run_create_payload, sign_ed25519
 
 DEFAULT_API_URL = "https://api.useinvariance.com"
 BATCH_MAX = 100
@@ -158,7 +159,7 @@ class AsyncStep:
         self.id = _random_node_id()
         self._parent_id: str | None = None
         self._start_ms: int | None = None
-        self._token: contextvars.Token | None = None
+        self._token: contextvars.Token[AsyncStep | None] | None = None
 
     async def __aenter__(self) -> "AsyncStep":
         parent = _current_async_step.get()
@@ -167,7 +168,12 @@ class AsyncStep:
         self._token = _current_async_step.set(self)
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> bool:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: Any,
+    ) -> Literal[False]:
         try:
             if exc_val is not None and self.error is None:
                 self.error = {
@@ -232,7 +238,12 @@ class AsyncRun:
     async def __aenter__(self) -> "AsyncRun":
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> bool:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: Any,
+    ) -> Literal[False]:
         try:
             await self.flush()
         finally:
@@ -282,7 +293,10 @@ class AsyncRun:
         Mirrors :meth:`invariance.runs.Run.handoff`. Returns a signed
         :class:`HandoffToken` when the run is signed; ``None`` otherwise.
         """
-        issuer_agent_id = from_agent_id or self._session.get("agent_id")
+        issuer_agent_id_raw = from_agent_id or self._session.get("agent_id")
+        if not isinstance(issuer_agent_id_raw, str):
+            raise RuntimeError("run session is missing agent_id; cannot issue handoff")
+        issuer_agent_id: str = issuer_agent_id_raw
         async with self.step(
             "handoff",
             type="handoff",
@@ -429,6 +443,13 @@ class AsyncRunsResource:
     def __init__(self, http: AsyncHttpClient, signing_key: str | None = None) -> None:
         self._http = http
         self._signing_key = signing_key
+        self._cached_agent_id: str | None = None
+
+    async def _agent_id(self) -> str:
+        if self._cached_agent_id is None:
+            me = await self._http.get("/v1/agents/me")
+            self._cached_agent_id = me["agent"]["id"]
+        return self._cached_agent_id
 
     async def start(
         self,
@@ -437,14 +458,37 @@ class AsyncRunsResource:
         *,
         signing_key: str | None = None,
         buffered: bool = True,
+        replay_seed: str | None = None,
+        parent_handoff_token: str | None = None,
     ) -> AsyncRun:
         body: dict[str, Any] = {}
         if name is not None:
             body["name"] = name
         if metadata is not None:
             body["metadata"] = metadata
+        if replay_seed is not None:
+            body["replay_seed"] = replay_seed
+        if parent_handoff_token is not None:
+            body["parent_handoff_token"] = parent_handoff_token
+
+        # Run-level provenance (mirrors sync RunsResource and TS SDK).
+        effective_signing_key = signing_key or self._signing_key
+        if effective_signing_key is not None:
+            timestamp = _now_ms()
+            payload = {
+                "agent_id": await self._agent_id(),
+                "name": name or "",
+                "metadata": metadata or {},
+                "replay_seed": replay_seed,
+                "parent_handoff_token": parent_handoff_token,
+                "timestamp": timestamp,
+            }
+            digest = hash_run_create_payload(payload)
+            body["timestamp"] = timestamp
+            body["signature"] = sign_ed25519(digest, effective_signing_key)
+
         res = await self._http.post("/v1/runs", json=body)
-        return AsyncRun(self._http, res["run"], signing_key or self._signing_key, buffered=buffered)
+        return AsyncRun(self._http, res["run"], effective_signing_key, buffered=buffered)
 
     async def list(self, *, cursor: str | None = None, limit: int | None = None) -> RunList:
         return await self._http.get(with_query("/v1/runs", cursor=cursor, limit=limit))
@@ -489,6 +533,37 @@ class AsyncAgentsResource:
     async def set_public_key(self, public_key: str) -> Agent:
         res = await self._http.request(
             "PUT", "/v1/agents/me/key", json={"public_key": public_key}
+        )
+        return res["agent"]
+
+    async def rotate_key(
+        self,
+        new_private_key: str,
+        prev_public_key: str | None = None,
+    ) -> Agent:
+        """Mirror of :meth:`AgentsResource.rotate_key` for async clients."""
+        from .crypto import get_public_key, hash_key_rotation_payload, sign_ed25519
+
+        new_public_key = get_public_key(new_private_key)
+        me = await self.me()
+        timestamp = _now_ms()
+        payload: dict[str, Any] = {
+            "agent_id": me["agent"]["id"],
+            "new_public_key": new_public_key,
+            "prev_public_key": prev_public_key,
+            "timestamp": timestamp,
+        }
+        digest = hash_key_rotation_payload(payload)
+        signature = sign_ed25519(digest, new_private_key)
+        res = await self._http.request(
+            "PUT",
+            "/v1/agents/me/key",
+            json={
+                "public_key": new_public_key,
+                "prev_public_key": prev_public_key,
+                "timestamp": timestamp,
+                "signature": signature,
+            },
         )
         return res["agent"]
 

@@ -3,12 +3,13 @@ from __future__ import annotations
 import contextvars
 import threading
 import traceback
-from typing import Any
+from typing import Any, Literal
 
-from ._types import RunList
+from ._types import RunList, Signal
 from .client import HttpClient
 from .config import Features
 from ._internal import build_node_body, now_ms as _now_ms, random_node_id as _random_node_id
+from .crypto import hash_run_create_payload, sign_ed25519
 from ._query import with_query
 from .handoff_token import HandoffToken, build_handoff_token
 from .signals import SignalsResource
@@ -64,7 +65,7 @@ class Step:
         self.id = _random_node_id()
         self._parent_id: str | None = None
         self._start_ms: int | None = None
-        self._token: contextvars.Token | None = None
+        self._token: contextvars.Token[Step | None] | None = None
 
     def __enter__(self) -> "Step":
         parent = _current_step.get()
@@ -73,7 +74,12 @@ class Step:
         self._token = _current_step.set(self)
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: Any,
+    ) -> Literal[False]:
         try:
             if exc_val is not None and self.error is None:
                 self.error = {
@@ -163,7 +169,12 @@ class Run:
     def __enter__(self) -> "Run":
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: Any,
+    ) -> Literal[False]:
         try:
             self.flush()
         finally:
@@ -219,7 +230,10 @@ class Run:
         creating their run. Returns ``None`` for unsigned runs (no crypto chain
         of custody is possible without keys).
         """
-        issuer_agent_id = from_agent_id or self._session.get("agent_id")
+        issuer_agent_id_raw = from_agent_id or self._session.get("agent_id")
+        if not isinstance(issuer_agent_id_raw, str):
+            raise RuntimeError("run session is missing agent_id; cannot issue handoff")
+        issuer_agent_id: str = issuer_agent_id_raw
         with self.step(
             "handoff",
             type="handoff",
@@ -316,7 +330,7 @@ class Run:
 
     # ── Signals ────────────────────────────────────────────────────────
 
-    def signal(self, spec: dict[str, Any]) -> dict[str, Any]:
+    def signal(self, spec: dict[str, Any]) -> Signal:
         """Emit a signal attached to the current run (and last node by default).
 
         ``spec`` is a body dict — typically the output of
@@ -368,6 +382,15 @@ class RunsResource:
         self._http = http
         self._signing_key = signing_key
         self._features = features or Features()
+        # Lazily fetched once on the first signed run-create — used to bind
+        # run-create signatures to the agent's identity.
+        self._cached_agent_id: str | None = None
+
+    def _agent_id(self) -> str:
+        if self._cached_agent_id is None:
+            me = self._http.get("/v1/agents/me")
+            self._cached_agent_id = me["agent"]["id"]
+        return self._cached_agent_id
 
     def start(
         self,
@@ -393,11 +416,30 @@ class RunsResource:
             body["replay_seed"] = replay_seed
         if parent_handoff_token is not None:
             body["parent_handoff_token"] = parent_handoff_token
+
+        # Sign the run-create when a signing key is configured. Backend verifies
+        # against the agent's registered public_key — proves origin even if the
+        # API key is leaked. Mirrors the TS SDK exactly.
+        effective_signing_key = signing_key or self._signing_key
+        if effective_signing_key is not None:
+            timestamp = _now_ms()
+            payload = {
+                "agent_id": self._agent_id(),
+                "name": name or "",
+                "metadata": metadata or {},
+                "replay_seed": replay_seed,
+                "parent_handoff_token": parent_handoff_token,
+                "timestamp": timestamp,
+            }
+            digest = hash_run_create_payload(payload)
+            body["timestamp"] = timestamp
+            body["signature"] = sign_ed25519(digest, effective_signing_key)
+
         res = self._http.post("/v1/runs", json=body)
         return Run(
             self._http,
             res["run"],
-            signing_key or self._signing_key,
+            effective_signing_key,
             buffered=buffered,
             tracing=self._features.tracing,
         )
