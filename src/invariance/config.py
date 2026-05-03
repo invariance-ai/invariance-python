@@ -41,7 +41,7 @@ def resolve_config(
     if not key:
         raise ValueError("api_key is required (pass arg or set INVARIANCE_API_KEY)")
 
-    url = api_url or os.environ.get("INVARIANCE_API_URL") or DEFAULT_API_URL
+    url = (api_url or os.environ.get("INVARIANCE_API_URL") or DEFAULT_API_URL).rstrip("/")
     sig = signing_key or os.environ.get("INVARIANCE_SIGNING_KEY")
 
     f = features or {}

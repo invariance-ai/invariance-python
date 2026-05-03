@@ -19,6 +19,12 @@ def test_custom_api_url():
     inv.close()
 
 
+def test_custom_api_url_trailing_slash_removed():
+    inv = Invariance(api_key="inv_test_abc", api_url="http://localhost:3001///")
+    assert str(inv._http._client.base_url) == "http://localhost:3001"
+    inv.close()
+
+
 def test_context_manager():
     with Invariance(api_key="inv_test_abc") as inv:
         assert inv.runs is not None
