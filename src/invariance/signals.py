@@ -37,7 +37,7 @@ __all__ = [
 
 def build_signal_body(
     *,
-    severity: Severity,
+    severity: Severity | None = None,
     title: str,
     message: str | None = None,
     type: str | None = None,
@@ -45,8 +45,11 @@ def build_signal_body(
     node_id: str | None = None,
     run_id: str | None = None,
 ) -> dict[str, Any]:
-    """Assemble the POST body for /v1/signals, stripping unset fields."""
-    body: dict[str, Any] = {"severity": severity, "title": title}
+    """Assemble the POST body for /v1/signals, stripping unset fields.
+
+    severity defaults to ``"info"`` when omitted.
+    """
+    body: dict[str, Any] = {"severity": severity or "info", "title": title}
     if message is not None:
         body["message"] = message
     if type is not None:
@@ -114,22 +117,31 @@ class SignalsResource:
     def emit(
         self,
         *,
-        severity: Severity,
         title: str,
+        severity: Severity | None = None,
         message: str | None = None,
         type: str | None = None,
         data: Any | None = None,
         node_id: str | None = None,
         run_id: str | None = None,
     ) -> Signal:
+        """Emit a signal. ``severity`` defaults to ``"info"``.
+
+        ``run_id`` / ``node_id`` fall back to the ``INVARIANCE_RUN_ID`` /
+        ``INVARIANCE_NODE_ID`` env vars when unset, so coding agents
+        running inside a recorded run can emit progress events without
+        plumbing IDs explicitly.
+        """
+        import os
+
         body = build_signal_body(
             severity=severity,
             title=title,
             message=message,
             type=type,
             data=data,
-            node_id=node_id,
-            run_id=run_id,
+            node_id=node_id if node_id is not None else os.environ.get("INVARIANCE_NODE_ID"),
+            run_id=run_id if run_id is not None else os.environ.get("INVARIANCE_RUN_ID"),
         )
         res = self._http.post("/v1/signals", json=body)
         return res["signal"]
