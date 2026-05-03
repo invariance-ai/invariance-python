@@ -22,7 +22,7 @@ from typing import Any, Generic, TypeVar
 
 from .client import HttpClient
 
-T = TypeVar("T", bound=dict)
+T = TypeVar("T", bound=dict[str, Any])
 
 
 @dataclass(frozen=True)
@@ -62,7 +62,7 @@ class NodeType(Generic[T]):
         return body
 
 
-def define_node_type(type: str, _schema: type | None = None) -> NodeType:
+def define_node_type(type: str, _schema: type | None = None) -> NodeType[dict[str, Any]]:
     """Convenience factory mirroring the TS ``defineNodeType`` surface.
 
     The optional second argument is a ``TypedDict`` class used only by

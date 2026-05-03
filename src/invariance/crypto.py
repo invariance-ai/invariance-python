@@ -55,6 +55,25 @@ def hash_node_payload(payload: dict[str, Any]) -> str:
     return sha256_hex(stable_stringify(payload))
 
 
+def hash_run_create_payload(payload: dict[str, Any]) -> str:
+    """Hash a RunCreateHashPayload dict.
+
+    Expected keys: agent_id, name, metadata, replay_seed,
+    parent_handoff_token, timestamp. MUST stay byte-identical to the
+    TS SDK / backend RunCreateHashPayload definition.
+    """
+    return sha256_hex(stable_stringify(payload))
+
+
+def hash_key_rotation_payload(payload: dict[str, Any]) -> str:
+    """Hash a KeyRotationHashPayload dict.
+
+    Expected keys: agent_id, new_public_key, prev_public_key, timestamp.
+    Signed by the **new** private key.
+    """
+    return sha256_hex(stable_stringify(payload))
+
+
 # ── Ed25519 ────────────────────────────────────────────────────────────────
 
 

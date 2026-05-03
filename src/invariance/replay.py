@@ -43,7 +43,7 @@ def _seed_prngs(seed: str) -> None:
     os.environ.setdefault("PYTHONHASHSEED", str(int_seed % (2**32)))
 
     try:
-        import numpy as np  # type: ignore
+        import numpy as np
 
         np.random.seed(int_seed % (2**32))
     except ImportError:

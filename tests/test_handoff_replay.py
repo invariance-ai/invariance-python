@@ -224,6 +224,8 @@ def test_handoff_returns_token_when_signed():
         path = request.url.path
         body = json.loads(request.content) if request.content else None
         calls.append({"method": request.method, "path": path, "body": body})
+        if request.method == "GET" and path == "/v1/agents/me":
+            return httpx.Response(200, json={"agent": {"id": "planner", "name": "planner", "public_key": None, "project_id": "p", "created_at": "2024-01-01T00:00:00Z"}})
         if request.method == "POST" and path == "/v1/runs":
             return httpx.Response(200, json={"run": {"id": "run_1", "agent_id": "planner", "status": "open"}})
         if request.method == "POST" and path == "/v1/nodes":

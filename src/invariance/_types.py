@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import Any, Literal, TypedDict
 
+# NotRequired is in typing only as of 3.11; project supports 3.10+, so source from typing_extensions.
+from typing_extensions import NotRequired
+
 Severity = Literal["info", "low", "medium", "high", "critical"]
 NumericOp = Literal["gt", "gte", "lt", "lte", "eq", "neq"]
 
@@ -58,15 +61,17 @@ class RunModel(TypedDict):
     parent_run_id: str | None
     fork_point_node_id: str | None
     replay_seed: str | None
-    total_input_tokens: int
-    total_output_tokens: int
-    total_cache_read: int
-    total_cache_write: int
-    total_cost_usd: float
-    llm_call_count: int
-    tool_call_count: int
-    error_count: int
-    total_latency_ms: int
+    # Server returns these only after rollups land; absent on freshly-created runs.
+    # Mirrors optionality of the TS SDK Run interface.
+    total_input_tokens: NotRequired[int]
+    total_output_tokens: NotRequired[int]
+    total_cache_read: NotRequired[int]
+    total_cache_write: NotRequired[int]
+    total_cost_usd: NotRequired[float]
+    llm_call_count: NotRequired[int]
+    tool_call_count: NotRequired[int]
+    error_count: NotRequired[int]
+    total_latency_ms: NotRequired[int]
 
 
 # ── Nodes ──────────────────────────────────────────────────────────────────
