@@ -13,6 +13,7 @@ import contextvars
 import functools
 import inspect
 import traceback
+import uuid
 from typing import Any, Callable, TypeVar
 
 import httpx
@@ -83,10 +84,21 @@ class AsyncHttpClient:
         )
         self._retry = retry_policy or RetryPolicy()
 
-    async def request(self, method: str, path: str, *, json: Any | None = None) -> Any:
+    async def request(
+        self,
+        method: str,
+        path: str,
+        *,
+        json: Any | None = None,
+        idempotency_key: str | None = None,
+    ) -> Any:
+        headers: dict[str, str] | None = None
+        if method.upper() not in ("GET", "HEAD", "OPTIONS"):
+            headers = {"Idempotency-Key": idempotency_key or uuid.uuid4().hex}
+
         last_status = 0
         for attempt in range(self._retry.max_retries + 1):
-            res = await self._client.request(method, path, json=json)
+            res = await self._client.request(method, path, json=json, headers=headers)
             if res.status_code < 400 or not should_retry(res.status_code):
                 break
             last_status = res.status_code
@@ -116,14 +128,26 @@ class AsyncHttpClient:
     async def get(self, path: str) -> Any:
         return await self.request("GET", path)
 
-    async def post(self, path: str, json: Any | None = None) -> Any:
-        return await self.request("POST", path, json=json)
+    async def post(
+        self,
+        path: str,
+        json: Any | None = None,
+        *,
+        idempotency_key: str | None = None,
+    ) -> Any:
+        return await self.request("POST", path, json=json, idempotency_key=idempotency_key)
 
-    async def patch(self, path: str, json: Any | None = None) -> Any:
-        return await self.request("PATCH", path, json=json)
+    async def patch(
+        self,
+        path: str,
+        json: Any | None = None,
+        *,
+        idempotency_key: str | None = None,
+    ) -> Any:
+        return await self.request("PATCH", path, json=json, idempotency_key=idempotency_key)
 
-    async def delete(self, path: str) -> Any:
-        return await self.request("DELETE", path)
+    async def delete(self, path: str, *, idempotency_key: str | None = None) -> Any:
+        return await self.request("DELETE", path, idempotency_key=idempotency_key)
 
     async def aclose(self) -> None:
         await self._client.aclose()

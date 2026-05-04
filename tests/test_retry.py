@@ -80,6 +80,23 @@ def test_retries_on_5xx():
     assert calls["n"] == 2
 
 
+def test_mutating_retries_reuse_idempotency_key():
+    keys: list[str | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        keys.append(request.headers.get("Idempotency-Key"))
+        if len(keys) == 1:
+            return httpx.Response(503, json={"error": {"code": "internal_error", "message": "busy"}})
+        return httpx.Response(200, json={"ok": True})
+
+    inv = _make_inv(handler)
+    inv._http.post("/v1/signals", json={"title": "x"})
+
+    assert len(keys) == 2
+    assert keys[0]
+    assert keys[0] == keys[1]
+
+
 @pytest.mark.asyncio
 async def test_async_retries_on_429():
     calls = {"n": 0}
@@ -102,6 +119,33 @@ async def test_async_retries_on_429():
     finally:
         await inv.aclose()
     assert calls["n"] == 2
+
+
+@pytest.mark.asyncio
+async def test_async_mutating_retries_reuse_idempotency_key():
+    keys: list[str | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        keys.append(request.headers.get("Idempotency-Key"))
+        if len(keys) == 1:
+            return httpx.Response(503, json={"error": {"code": "internal_error", "message": "busy"}})
+        return httpx.Response(200, json={"ok": True})
+
+    inv = AsyncInvariance(api_key="inv_test_abc", api_url="http://test.local")
+    inv._http._retry = RetryPolicy(max_retries=3, base_seconds=0.0, jitter=0.0)
+    inv._http._client = httpx.AsyncClient(
+        base_url="http://test.local",
+        headers={"Authorization": "Bearer inv_test_abc"},
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        await inv._http.post("/v1/signals", json={"title": "x"})
+    finally:
+        await inv.aclose()
+
+    assert len(keys) == 2
+    assert keys[0]
+    assert keys[0] == keys[1]
 
 
 @pytest.mark.asyncio
