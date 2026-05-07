@@ -64,6 +64,64 @@ inv nodes tail <run_id>            # stream nodes as they arrive
 
 An async client is also available as `AsyncInvariance` from `invariance`.
 
+## Multi-agent
+
+Each `Invariance(api_key=...)` is bound to a single agent — the server reads `agent_id` from the API key on every node. To trace a multi-agent system, give each agent its own key (`inv.agents.create(...)` or the dashboard) and one `Invariance` instance per process/agent.
+
+A delegation between agents is recorded as a **handoff node**. The sender emits one with `run.handoff()`; the receiver opens its own run and links back via `parent_handoff_token`:
+
+```python
+import os
+
+from invariance import Invariance
+
+# ── sender (agent: planner) ─────────────────────────────────────────
+planner = Invariance(
+    api_key=os.environ["PLANNER_API_KEY"],
+    signing_key=os.environ.get("PLANNER_SIGNING_KEY"),  # required to mint a token
+)
+
+with planner.runs.start(name="plan-and-execute") as run:
+    run.log("plan ready", {"steps": steps})
+    token = run.handoff(
+        to_agent_id="executor",
+        reason="specialist required",
+        message={"steps": steps},
+    )
+    handoff_token = token.encode() if token else None  # None when unsigned
+
+# ── receiver (agent: executor) ──────────────────────────────────────
+executor = Invariance(api_key=os.environ["EXECUTOR_API_KEY"])
+
+with executor.runs.start(
+    name="execute-plan",
+    parent_handoff_token=handoff_token,
+) as run:
+    run.log("executing", {"steps": steps})
+    # …
+```
+
+What the platform does with this:
+
+- The handoff node carries `handoff_from` / `handoff_to` / `handoff_reason`. The dashboard renders it as a boundary between swimlanes.
+- `parent_handoff_token` populates the receiver run's `parent_run_id`, so `/v1/runs/:id/metrics?include=descendants` rolls up the whole tree.
+- When both sides sign, the token is an Ed25519 attestation: the platform verifies the receiver was actually delegated to by that sender at that node hash. Unsigned runs still get the trace shape but no chain of custody.
+
+For inline delegations within a single run (no separate sub-run), pass the same metadata to any node helper:
+
+```python
+with run.step(
+    "route",
+    type="handoff",
+    handoff_from="router",
+    handoff_to="refunds",
+    handoff_reason="category=refund",
+):
+    pass
+```
+
+See `invariance-platform/docs/observability.md` for the swimlane / `by_agent` metrics surface.
+
 ## Lifecycle
 
 The SDK is run-first:
