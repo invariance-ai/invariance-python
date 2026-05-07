@@ -48,6 +48,10 @@ Each `Invariance(api_key=...)` is bound to a single agent — the server reads `
 A delegation between agents is recorded as a **handoff node**. The sender emits one with `run.handoff()`; the receiver opens its own run and links back via `parent_handoff_token`:
 
 ```python
+import os
+
+from invariance import Invariance
+
 # ── sender (agent: planner) ─────────────────────────────────────────
 planner = Invariance(
     api_key=os.environ["PLANNER_API_KEY"],
