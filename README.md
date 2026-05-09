@@ -55,7 +55,14 @@ Exiting the outer `with` block finishes the run. If the block raises, the run is
 run.fail("payment provider returned 5xx")
 ```
 
-After the run completes, inspect it from any terminal:
+After the run completes, inspect it from Python:
+
+```python
+fetched = inv.runs.get(run.run_id)        # Run object: run_id, name, status
+recent = inv.runs.list(limit=10)          # RunList: paginated by cursor
+```
+
+…or from any terminal via the CLI:
 
 ```bash
 inv runs inspect <run_id> --json   # full run + nodes, agent-friendly
