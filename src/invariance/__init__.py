@@ -37,9 +37,21 @@ from .memory import (
     MemoryWriteResponse,
     SystemRecord,
 )
+from .evals import (
+    EvalCaseRecord,
+    EvalListResponse,
+    EvalMetadata,
+    EvalResult,
+    EvalStatus,
+    EvalSummary,
+    EvalsResource,
+    derive_status,
+    read_eval_metadata,
+)
 from .async_client import (
     AsyncAgentsResource,
     AsyncAskResource,
+    AsyncEvalsResource,
     AsyncFindingsResource,
     AsyncInvariance,
     AsyncKbResource,
@@ -117,6 +129,16 @@ __all__ = [
     "AsyncAskResource",
     "MemoryResource",
     "AsyncMemoryResource",
+    "EvalsResource",
+    "AsyncEvalsResource",
+    "EvalMetadata",
+    "EvalResult",
+    "EvalStatus",
+    "EvalCaseRecord",
+    "EvalListResponse",
+    "EvalSummary",
+    "derive_status",
+    "read_eval_metadata",
     "MemoryAccess",
     "MemoryAccessType",
     "MemoryDivergenceKind",
@@ -170,6 +192,7 @@ class Invariance:
         self.kb = KbResource(self._http)
         self.ask = AskResource(self._http)
         self.memory = MemoryResource(self._http)
+        self.evals = EvalsResource(self._http, self.runs)
 
     def close(self) -> None:
         self._http.close()
