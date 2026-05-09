@@ -58,6 +58,15 @@ from ._retry import RetryPolicy, backoff_delay, parse_retry_after, should_retry
 from .monitors import MonitorSpec, compile_monitor
 from ._internal import build_node_body, now_ms as _now_ms, random_node_id as _random_node_id
 from ._query import with_query
+from .memory import (
+    EvidenceRef,
+    MemoryReadResponse,
+    MemorySource,
+    MemorySubjectType,
+    MemoryWriteResponse,
+    _build_read_body,
+    _build_write_body,
+)
 from .handoff_token import HandoffToken, build_handoff_token
 
 DEFAULT_API_URL = "https://api.useinvariance.com"
@@ -928,6 +937,61 @@ class AsyncAskResource:
         return await self._http.post("/v1/ask", json=payload)
 
 
+class AsyncMemoryResource:
+    def __init__(self, http: "AsyncHttpClient") -> None:
+        self._http = http
+
+    async def read(
+        self,
+        *,
+        subject_type: "MemorySubjectType",
+        subject_id: str,
+        key: str,
+        used_for: str,
+        run_id: str | None = None,
+        node_id: str | None = None,
+    ) -> "MemoryReadResponse":
+        body = _build_read_body(
+            subject_type=subject_type,
+            subject_id=subject_id,
+            key=key,
+            used_for=used_for,
+            run_id=run_id,
+            node_id=node_id,
+        )
+        return await self._http.post("/v1/memory/read", json=body)
+
+    async def write(
+        self,
+        *,
+        subject_type: "MemorySubjectType",
+        subject_id: str,
+        key: str,
+        value: Any,
+        used_for: str,
+        run_id: str | None = None,
+        node_id: str | None = None,
+        source: "MemorySource | None" = None,
+        confidence: float | None = None,
+        provenance: list["EvidenceRef"] | None = None,
+        valid_until: str | None = None,
+    ) -> "MemoryWriteResponse":
+        body = _build_write_body(
+            subject_type=subject_type,
+            subject_id=subject_id,
+            key=key,
+            value=value,
+            used_for=used_for,
+            run_id=run_id,
+            node_id=node_id,
+            source=source,
+            confidence=confidence,
+            provenance=provenance,
+            valid_until=valid_until,
+        )
+        return await self._http.post("/v1/memory/write", json=body)
+
+
 class AsyncInvariance:
     def __init__(
         self,
@@ -963,6 +1027,7 @@ class AsyncInvariance:
         self.node_types = AsyncNodeTypesResource(self._http)
         self.kb = AsyncKbResource(self._http)
         self.ask = AsyncAskResource(self._http)
+        self.memory = AsyncMemoryResource(self._http)
 
     async def aclose(self) -> None:
         await self._http.aclose()
