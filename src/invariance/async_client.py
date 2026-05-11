@@ -25,10 +25,24 @@ from ._types import (
     AskResponse,
     AskRole,
     CreateAgentResponse,
+    EvalCase,
+    EvalCaseList,
     EvalCaseRecord,
+    EvalDataset,
+    EvalDatasetExample,
+    EvalDatasetExampleList,
+    EvalDatasetList,
     EvalListResponse,
     EvalResult,
+    EvalResultRowList,
+    EvalRunRecord,
+    EvalScorer,
+    EvalScorerKind,
+    EvalScorerList,
+    EvalSuiteList,
+    EvalSuiteRecord,
     EvalSummary,
+    EvalTargetType,
     EvaluateMonitorResponse,
     EvidenceRef,
     Finding,
@@ -995,11 +1009,256 @@ class AsyncMemoryResource:
         return await self._http.post("/v1/memory/write", json=body)
 
 
+class AsyncDatasetsResource:
+    def __init__(self, http: AsyncHttpClient) -> None:
+        self._http = http
+
+    async def create(
+        self,
+        *,
+        name: str,
+        description: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> EvalDataset:
+        body: dict[str, Any] = {"name": name}
+        if description is not None:
+            body["description"] = description
+        if metadata is not None:
+            body["metadata"] = metadata
+        res = await self._http.post("/v1/eval-datasets", body)
+        return res["dataset"]
+
+    async def list(
+        self,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> EvalDatasetList:
+        return await self._http.get(with_query("/v1/eval-datasets", limit=limit, cursor=cursor))
+
+    async def get(self, dataset_id: str) -> EvalDataset:
+        res = await self._http.get(f"/v1/eval-datasets/{dataset_id}")
+        return res["dataset"]
+
+    async def append_example(
+        self,
+        dataset_id: str,
+        *,
+        input: dict[str, Any],
+        expected: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> EvalDatasetExample:
+        body: dict[str, Any] = {"input": input}
+        if expected is not None:
+            body["expected"] = expected
+        if metadata is not None:
+            body["metadata"] = metadata
+        res = await self._http.post(f"/v1/eval-datasets/{dataset_id}/examples", body)
+        return res["example"]
+
+    async def list_examples(
+        self,
+        dataset_id: str,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> EvalDatasetExampleList:
+        return await self._http.get(
+            with_query(f"/v1/eval-datasets/{dataset_id}/examples", limit=limit, cursor=cursor)
+        )
+
+
+class AsyncScorersResource:
+    def __init__(self, http: AsyncHttpClient) -> None:
+        self._http = http
+
+    async def create(
+        self,
+        *,
+        name: str,
+        kind: EvalScorerKind,
+        description: str | None = None,
+        definition: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> EvalScorer:
+        body: dict[str, Any] = {"name": name, "kind": kind}
+        if description is not None:
+            body["description"] = description
+        if definition is not None:
+            body["definition"] = definition
+        if metadata is not None:
+            body["metadata"] = metadata
+        res = await self._http.post("/v1/eval-scorers", body)
+        return res["scorer"]
+
+    async def list(
+        self,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> EvalScorerList:
+        return await self._http.get(with_query("/v1/eval-scorers", limit=limit, cursor=cursor))
+
+
+class AsyncSuitesResource:
+    def __init__(self, http: AsyncHttpClient) -> None:
+        self._http = http
+
+    async def create(
+        self,
+        *,
+        name: str,
+        target_type: EvalTargetType,
+        description: str | None = None,
+        dataset_id: str | None = None,
+        scorer_ids: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> EvalSuiteRecord:
+        body: dict[str, Any] = {"name": name, "target_type": target_type}
+        if description is not None:
+            body["description"] = description
+        if dataset_id is not None:
+            body["dataset_id"] = dataset_id
+        if scorer_ids is not None:
+            body["scorer_ids"] = scorer_ids
+        if metadata is not None:
+            body["metadata"] = metadata
+        res = await self._http.post("/v1/eval-suites", body)
+        return res["suite"]
+
+    async def list(
+        self,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> EvalSuiteList:
+        return await self._http.get(with_query("/v1/eval-suites", limit=limit, cursor=cursor))
+
+    async def get(self, suite_id: str) -> EvalSuiteRecord:
+        res = await self._http.get(f"/v1/eval-suites/{suite_id}")
+        return res["suite"]
+
+    async def run(
+        self,
+        suite_id: str,
+        *,
+        metadata: dict[str, Any] | None = None,
+    ) -> EvalRunRecord:
+        body: dict[str, Any] = {}
+        if metadata is not None:
+            body["metadata"] = metadata
+        res = await self._http.post(f"/v1/eval-suites/{suite_id}/run", body)
+        return res["eval_run"]
+
+
+class AsyncCasesResource:
+    def __init__(self, http: AsyncHttpClient) -> None:
+        self._http = http
+
+    async def create(
+        self,
+        suite_id: str,
+        *,
+        name: str,
+        dataset_example_id: str | None = None,
+        source_run_id: str | None = None,
+        source_finding_id: str | None = None,
+        source_graph_ref: str | None = None,
+        input_bundle: dict[str, Any] | None = None,
+        mutations: list[dict[str, Any]] | None = None,
+        expected: dict[str, Any] | None = None,
+        assertions: list[dict[str, Any]] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> EvalCase:
+        body: dict[str, Any] = {"name": name}
+        if dataset_example_id is not None:
+            body["dataset_example_id"] = dataset_example_id
+        if source_run_id is not None:
+            body["source_run_id"] = source_run_id
+        if source_finding_id is not None:
+            body["source_finding_id"] = source_finding_id
+        if source_graph_ref is not None:
+            body["source_graph_ref"] = source_graph_ref
+        if input_bundle is not None:
+            body["input_bundle"] = input_bundle
+        if mutations is not None:
+            body["mutations"] = mutations
+        if expected is not None:
+            body["expected"] = expected
+        if assertions is not None:
+            body["assertions"] = assertions
+        if metadata is not None:
+            body["metadata"] = metadata
+        res = await self._http.post(f"/v1/eval-suites/{suite_id}/cases", body)
+        return res["case"]
+
+    async def create_from_run(
+        self,
+        suite_id: str,
+        *,
+        source_run_id: str,
+        name: str | None = None,
+        mutations: list[dict[str, Any]] | None = None,
+        expected: dict[str, Any] | None = None,
+        assertions: list[dict[str, Any]] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> EvalCase:
+        body: dict[str, Any] = {"source_run_id": source_run_id}
+        if name is not None:
+            body["name"] = name
+        if mutations is not None:
+            body["mutations"] = mutations
+        if expected is not None:
+            body["expected"] = expected
+        if assertions is not None:
+            body["assertions"] = assertions
+        if metadata is not None:
+            body["metadata"] = metadata
+        res = await self._http.post(f"/v1/eval-suites/{suite_id}/cases/from-run", body)
+        return res["case"]
+
+    async def list(
+        self,
+        suite_id: str,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> EvalCaseList:
+        return await self._http.get(
+            with_query(f"/v1/eval-suites/{suite_id}/cases", limit=limit, cursor=cursor)
+        )
+
+
+class AsyncEvalRunsResource:
+    def __init__(self, http: AsyncHttpClient) -> None:
+        self._http = http
+
+    async def get(self, eval_run_id: str) -> EvalRunRecord:
+        res = await self._http.get(f"/v1/eval-runs/{eval_run_id}")
+        return res["eval_run"]
+
+    async def list_results(
+        self,
+        eval_run_id: str,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> EvalResultRowList:
+        return await self._http.get(
+            with_query(f"/v1/eval-runs/{eval_run_id}/results", limit=limit, cursor=cursor)
+        )
+
+
 class AsyncEvalsResource:
     def __init__(self, http: AsyncHttpClient, runs: "AsyncRunsResource") -> None:
         self._http = http
         self._runs = runs
         self._monitors = AsyncMonitorsResource(http)
+        self.datasets = AsyncDatasetsResource(http)
+        self.scorers = AsyncScorersResource(http)
+        self.suites = AsyncSuitesResource(http)
+        self.cases = AsyncCasesResource(http)
+        self.eval_runs = AsyncEvalRunsResource(http)
 
     async def run_case(
         self,
