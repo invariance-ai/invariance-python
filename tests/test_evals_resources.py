@@ -151,6 +151,69 @@ def test_eval_runs_get_and_results():
     assert seen == ["/v1/eval-runs/er_1", "/v1/eval-runs/er_1/results"]
 
 
+def test_scorers_list_builtins_hits_v1_scorers():
+    seen: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["path"] = request.url.path
+        return httpx.Response(200, json={"data": [{"name": "exact_match", "description": "d"}]})
+
+    inv = _inv_with_handler(handler)
+    res = inv.evals.scorers.list_builtins()
+    assert seen["path"] == "/v1/scorers"
+    assert res["data"][0]["name"] == "exact_match"
+
+
+def test_experiments_run_posts_scorer_specs():
+    seen: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["method"] = request.method
+        seen["path"] = request.url.path
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(201, json={"eval_run": {"id": "er_1", "status": "running"}})
+
+    inv = _inv_with_handler(handler)
+    er = inv.evals.experiments.run(
+        "er_1",
+        scorer_specs=[{"name": "exact_match"}, {"name": "numeric_tolerance", "config": {"tolerance": 0.1}}],
+        baseline_run_id="er_0",
+    )
+    assert seen["method"] == "POST"
+    assert seen["path"] == "/v1/eval-runs/er_1/experiment"
+    assert seen["body"] == {
+        "scorer_specs": [
+            {"name": "exact_match"},
+            {"name": "numeric_tolerance", "config": {"tolerance": 0.1}},
+        ],
+        "baseline_run_id": "er_0",
+    }
+    assert er["id"] == "er_1"
+
+
+def test_experiments_compare_passes_baseline_query():
+    seen: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["path"] = request.url.path
+        seen["params"] = dict(request.url.params)
+        return httpx.Response(
+            200,
+            json={
+                "run_id": "er_1",
+                "baseline_run_id": "er_0",
+                "aggregate": [{"scorer": "exact_match", "baseline": 0.5, "current": 0.8, "delta": 0.3}],
+                "cases": [],
+            },
+        )
+
+    inv = _inv_with_handler(handler)
+    res = inv.evals.experiments.compare("er_1", baseline_run_id="er_0")
+    assert seen["path"] == "/v1/eval-runs/er_1/compare"
+    assert seen["params"] == {"baseline": "er_0"}
+    assert res["aggregate"][0]["delta"] == 0.3
+
+
 # Async smoke — confirm AsyncEvalsResource exposes the sub-resources.
 
 def test_async_evals_has_sub_resources():
@@ -162,3 +225,4 @@ def test_async_evals_has_sub_resources():
     assert hasattr(inv.evals, "suites")
     assert hasattr(inv.evals, "cases")
     assert hasattr(inv.evals, "eval_runs")
+    assert hasattr(inv.evals, "experiments")

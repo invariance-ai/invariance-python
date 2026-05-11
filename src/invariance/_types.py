@@ -647,3 +647,49 @@ class EvalCaseList(TypedDict):
 class EvalResultRowList(TypedDict):
     data: list[EvalResultRow]
     next_cursor: str | None
+
+
+# Experiment + Compare — finalized backend types.
+
+ScorerName = Literal[
+    "exact_match", "contains", "numeric_tolerance", "json_match", "levenshtein"
+]
+
+
+class ScorerSpec(TypedDict, total=False):
+    name: ScorerName
+    config: dict[str, Any]
+
+
+class ExperimentRunRequest(TypedDict, total=False):
+    scorer_specs: list[ScorerSpec]
+    baseline_run_id: str
+
+
+class ScoreDelta(TypedDict):
+    scorer: ScorerName
+    baseline: float | None
+    current: float
+    delta: float
+
+
+class CaseScoreDelta(TypedDict):
+    case_id: str
+    scores: list[ScoreDelta]
+
+
+class CompareResponse(TypedDict):
+    run_id: str
+    baseline_run_id: str
+    aggregate: list[ScoreDelta]
+    cases: list[CaseScoreDelta]
+
+
+class BuiltinScorer(TypedDict, total=False):
+    name: ScorerName
+    description: str
+    config_schema: dict[str, Any]
+
+
+class BuiltinScorerList(TypedDict):
+    data: list[BuiltinScorer]

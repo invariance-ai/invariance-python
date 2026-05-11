@@ -24,6 +24,8 @@ from ._types import (
     AskContentBlock,
     AskResponse,
     AskRole,
+    BuiltinScorerList,
+    CompareResponse,
     CreateAgentResponse,
     EvalCase,
     EvalCaseList,
@@ -71,6 +73,7 @@ from ._types import (
     ReviewResponse,
     RunList,
     RunProof,
+    ScorerSpec,
     Severity,
     Signal,
     SignalList,
@@ -1099,6 +1102,32 @@ class AsyncScorersResource:
     ) -> EvalScorerList:
         return await self._http.get(with_query("/v1/eval-scorers", limit=limit, cursor=cursor))
 
+    async def list_builtins(self) -> BuiltinScorerList:
+        return await self._http.get("/v1/scorers")
+
+
+class AsyncExperimentsResource:
+    def __init__(self, http: AsyncHttpClient) -> None:
+        self._http = http
+
+    async def run(
+        self,
+        eval_run_id: str,
+        *,
+        scorer_specs: list[ScorerSpec],
+        baseline_run_id: str | None = None,
+    ) -> EvalRunRecord:
+        body: dict[str, Any] = {"scorer_specs": scorer_specs}
+        if baseline_run_id is not None:
+            body["baseline_run_id"] = baseline_run_id
+        res = await self._http.post(f"/v1/eval-runs/{eval_run_id}/experiment", body)
+        return res["eval_run"]
+
+    async def compare(self, eval_run_id: str, *, baseline_run_id: str) -> CompareResponse:
+        return await self._http.get(
+            with_query(f"/v1/eval-runs/{eval_run_id}/compare", baseline=baseline_run_id)
+        )
+
 
 class AsyncSuitesResource:
     def __init__(self, http: AsyncHttpClient) -> None:
@@ -1259,6 +1288,7 @@ class AsyncEvalsResource:
         self.suites = AsyncSuitesResource(http)
         self.cases = AsyncCasesResource(http)
         self.eval_runs = AsyncEvalRunsResource(http)
+        self.experiments = AsyncExperimentsResource(http)
 
     async def run_case(
         self,

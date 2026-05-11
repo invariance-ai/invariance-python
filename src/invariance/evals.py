@@ -6,6 +6,8 @@ from typing import Any, Callable
 
 from ._query import with_query
 from ._types import (
+    BuiltinScorerList,
+    CompareResponse,
     EvalCase,
     EvalCaseList,
     EvalCaseRecord,
@@ -27,6 +29,7 @@ from ._types import (
     EvalSummary,
     EvalTargetType,
     Finding,
+    ScorerSpec,
     Severity,
 )
 from .client import HttpClient
@@ -164,6 +167,32 @@ class ScorersResource:
         cursor: str | None = None,
     ) -> EvalScorerList:
         return self._http.get(with_query("/v1/eval-scorers", limit=limit, cursor=cursor))
+
+    def list_builtins(self) -> BuiltinScorerList:
+        return self._http.get("/v1/scorers")
+
+
+class ExperimentsResource:
+    def __init__(self, http: HttpClient) -> None:
+        self._http = http
+
+    def run(
+        self,
+        eval_run_id: str,
+        *,
+        scorer_specs: list[ScorerSpec],
+        baseline_run_id: str | None = None,
+    ) -> EvalRunRecord:
+        body: dict[str, Any] = {"scorer_specs": scorer_specs}
+        if baseline_run_id is not None:
+            body["baseline_run_id"] = baseline_run_id
+        res = self._http.post(f"/v1/eval-runs/{eval_run_id}/experiment", body)
+        return res["eval_run"]
+
+    def compare(self, eval_run_id: str, *, baseline_run_id: str) -> CompareResponse:
+        return self._http.get(
+            with_query(f"/v1/eval-runs/{eval_run_id}/compare", baseline=baseline_run_id)
+        )
 
 
 class SuitesResource:
@@ -325,6 +354,7 @@ class EvalsResource:
         self.suites = SuitesResource(http)
         self.cases = CasesResource(http)
         self.eval_runs = EvalRunsResource(http)
+        self.experiments = ExperimentsResource(http)
 
     def run_case(
         self,
