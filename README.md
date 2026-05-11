@@ -55,14 +55,14 @@ Exiting the outer `with` block finishes the run. If the block raises, the run is
 run.fail("payment provider returned 5xx")
 ```
 
-After the run completes, inspect it from any terminal:
+After the run completes, fetch it from the SDK:
 
-```bash
-inv runs inspect <run_id> --json   # full run + nodes, agent-friendly
-inv nodes tail <run_id>            # stream nodes as they arrive
+```python
+fetched = inv.runs.get(run.run_id)
+nodes = inv.nodes.list(run.run_id)
 ```
 
-An async client is also available as `AsyncInvariance` from `invariance`.
+An async client is also available as `AsyncInvariance` from `invariance`. The matching CLI (`inv runs inspect`, `inv nodes tail`) lives in the [`invariance-cli`](../invariance-cli) package.
 
 ## Multi-agent
 
@@ -147,6 +147,8 @@ The SDK is run-first:
 | `inv.narratives` | LLM-generated run summaries. |
 | `inv.kb` | Knowledge base — `create_page` / `list_pages` / `get_page` / `update_page` / `delete_page` and `*_session` / `list_messages` / `append_message`. |
 | `inv.ask` | Server-side agent loop with KB + run-context tools (`/v1/ask`). |
+| `inv.memory` | Record what the agent read or wrote about a subject — `read()` / `write()` against `/v1/memory/*`. |
+| `inv.evals` | Run a handler as a tracked eval case and derive pass/fail from findings — `run_case()` / `list_cases()` / `summarize()`. |
 
 ### Intelligence: KB + Ask
 

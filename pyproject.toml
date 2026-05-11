@@ -36,6 +36,10 @@ dev = ["pytest>=8.0"]
 [tool.hatch.build.targets.wheel]
 packages = ["src/invariance"]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["_worktrees", "_archive", "_review", ".venv", "node_modules"]
+
 [dependency-groups]
 dev = [
     "pytest-asyncio>=1.3.0",
