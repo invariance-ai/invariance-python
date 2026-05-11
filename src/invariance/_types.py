@@ -505,3 +505,191 @@ class EvalSummary(TypedDict):
     total: int
     passed: int
     failed: int
+
+
+# Datasets / Scorers / Suites / Cases / EvalRuns / Results — mirror api-types.
+
+EvalScorerKind = Literal["assertion", "code", "llm", "builtin"]
+EvalResultStatus = Literal["passed", "failed", "errored"]
+EvalSuiteRunStatus = Literal[
+    "queued", "running", "succeeded", "failed", "errored"
+]
+EvalTargetType = Literal["agent", "recipe", "replay"]
+
+
+class EvalDataset(TypedDict):
+    id: str
+    agent_id: str
+    name: str
+    description: str
+    metadata: dict[str, Any]
+    created_at: str
+    updated_at: str
+
+
+class EvalDatasetExample(TypedDict):
+    id: str
+    dataset_id: str
+    agent_id: str
+    input: dict[str, Any]
+    expected: dict[str, Any]
+    metadata: dict[str, Any]
+    created_at: str
+    updated_at: str
+
+
+class EvalScorer(TypedDict):
+    id: str
+    agent_id: str
+    name: str
+    description: str
+    kind: EvalScorerKind
+    definition: dict[str, Any]
+    metadata: dict[str, Any]
+    created_at: str
+    updated_at: str
+
+
+class EvalSuiteRecord(TypedDict):
+    id: str
+    agent_id: str
+    dataset_id: str | None
+    name: str
+    description: str
+    target_type: EvalTargetType
+    scorer_ids: list[str]
+    metadata: dict[str, Any]
+    created_at: str
+    updated_at: str
+
+
+class EvalCase(TypedDict):
+    id: str
+    suite_id: str
+    agent_id: str
+    dataset_example_id: str | None
+    source_run_id: str | None
+    source_finding_id: str | None
+    source_graph_ref: str | None
+    name: str
+    input_bundle: dict[str, Any]
+    mutations: list[dict[str, Any]]
+    expected: dict[str, Any]
+    assertions: list[dict[str, Any]]
+    metadata: dict[str, Any]
+    created_at: str
+    updated_at: str
+
+
+class EvalRunRecord(TypedDict):
+    id: str
+    suite_id: str
+    agent_id: str
+    target_type: EvalTargetType
+    target_ref: str | None
+    status: EvalSuiteRunStatus
+    summary: dict[str, Any]
+    started_at: str | None
+    completed_at: str | None
+    metadata: dict[str, Any]
+    created_at: str
+    updated_at: str
+
+
+class EvalResultFailure(TypedDict, total=False):
+    message: str
+    path: str
+    observed: Any
+    expected: Any
+
+
+class EvalResultRow(TypedDict):
+    id: str
+    eval_run_id: str
+    case_id: str
+    agent_id: str
+    status: EvalResultStatus
+    scores: dict[str, float]
+    failures: list[EvalResultFailure]
+    observed: dict[str, Any]
+    expected: dict[str, Any]
+    replay_run_id: str | None
+    evidence: dict[str, Any]
+    created_at: str
+    updated_at: str
+
+
+class EvalDatasetList(TypedDict):
+    data: list[EvalDataset]
+    next_cursor: str | None
+
+
+class EvalDatasetExampleList(TypedDict):
+    data: list[EvalDatasetExample]
+    next_cursor: str | None
+
+
+class EvalScorerList(TypedDict):
+    data: list[EvalScorer]
+    next_cursor: str | None
+
+
+class EvalSuiteList(TypedDict):
+    data: list[EvalSuiteRecord]
+    next_cursor: str | None
+
+
+class EvalCaseList(TypedDict):
+    data: list[EvalCase]
+    next_cursor: str | None
+
+
+class EvalResultRowList(TypedDict):
+    data: list[EvalResultRow]
+    next_cursor: str | None
+
+
+# Experiment + Compare — finalized backend types.
+
+ScorerName = Literal[
+    "exact_match", "contains", "numeric_tolerance", "json_match", "levenshtein"
+]
+
+
+class ScorerSpec(TypedDict, total=False):
+    name: ScorerName
+    config: dict[str, Any]
+
+
+class ExperimentRunRequest(TypedDict, total=False):
+    scorer_specs: list[ScorerSpec]
+    baseline_run_id: str
+
+
+class ScoreDelta(TypedDict):
+    scorer: ScorerName
+    baseline: float | None
+    current: float
+    delta: float
+
+
+class CaseScoreDelta(TypedDict):
+    case_id: str
+    scores: list[ScoreDelta]
+
+
+class CompareResponse(TypedDict):
+    run_id: str
+    baseline_run_id: str
+    aggregate: list[ScoreDelta]
+    cases: list[CaseScoreDelta]
+
+
+class BuiltinScorer(TypedDict, total=False):
+    name: ScorerName
+    description: str
+    config_schema: dict[str, Any]
+
+
+class BuiltinScorerList(TypedDict):
+    data: list[BuiltinScorer]

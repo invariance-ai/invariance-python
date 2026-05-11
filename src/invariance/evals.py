@@ -6,13 +6,30 @@ from typing import Any, Callable
 
 from ._query import with_query
 from ._types import (
+    BuiltinScorerList,
+    CompareResponse,
+    EvalCase,
+    EvalCaseList,
     EvalCaseRecord,
+    EvalDataset,
+    EvalDatasetExample,
+    EvalDatasetExampleList,
+    EvalDatasetList,
     EvalListResponse,
     EvalMetadata,
     EvalResult,
+    EvalResultRowList,
+    EvalRunRecord,
+    EvalScorer,
+    EvalScorerKind,
+    EvalScorerList,
     EvalStatus,
+    EvalSuiteList,
+    EvalSuiteRecord,
     EvalSummary,
+    EvalTargetType,
     Finding,
+    ScorerSpec,
     Severity,
 )
 from .client import HttpClient
@@ -61,11 +78,283 @@ def derive_status(findings: list[Finding]) -> EvalStatus:
     return "pass"
 
 
+class DatasetsResource:
+    def __init__(self, http: HttpClient) -> None:
+        self._http = http
+
+    def create(
+        self,
+        *,
+        name: str,
+        description: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> EvalDataset:
+        body: dict[str, Any] = {"name": name}
+        if description is not None:
+            body["description"] = description
+        if metadata is not None:
+            body["metadata"] = metadata
+        res = self._http.post("/v1/eval-datasets", body)
+        return res["dataset"]
+
+    def list(
+        self,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> EvalDatasetList:
+        return self._http.get(with_query("/v1/eval-datasets", limit=limit, cursor=cursor))
+
+    def get(self, dataset_id: str) -> EvalDataset:
+        res = self._http.get(f"/v1/eval-datasets/{dataset_id}")
+        return res["dataset"]
+
+    def append_example(
+        self,
+        dataset_id: str,
+        *,
+        input: dict[str, Any],
+        expected: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> EvalDatasetExample:
+        body: dict[str, Any] = {"input": input}
+        if expected is not None:
+            body["expected"] = expected
+        if metadata is not None:
+            body["metadata"] = metadata
+        res = self._http.post(f"/v1/eval-datasets/{dataset_id}/examples", body)
+        return res["example"]
+
+    def list_examples(
+        self,
+        dataset_id: str,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> EvalDatasetExampleList:
+        return self._http.get(
+            with_query(f"/v1/eval-datasets/{dataset_id}/examples", limit=limit, cursor=cursor)
+        )
+
+
+class ScorersResource:
+    def __init__(self, http: HttpClient) -> None:
+        self._http = http
+
+    def create(
+        self,
+        *,
+        name: str,
+        kind: EvalScorerKind,
+        description: str | None = None,
+        definition: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> EvalScorer:
+        body: dict[str, Any] = {"name": name, "kind": kind}
+        if description is not None:
+            body["description"] = description
+        if definition is not None:
+            body["definition"] = definition
+        if metadata is not None:
+            body["metadata"] = metadata
+        res = self._http.post("/v1/eval-scorers", body)
+        return res["scorer"]
+
+    def list(
+        self,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> EvalScorerList:
+        return self._http.get(with_query("/v1/eval-scorers", limit=limit, cursor=cursor))
+
+    def list_builtins(self) -> BuiltinScorerList:
+        return self._http.get("/v1/scorers")
+
+
+class ExperimentsResource:
+    def __init__(self, http: HttpClient) -> None:
+        self._http = http
+
+    def run(
+        self,
+        eval_run_id: str,
+        *,
+        scorer_specs: list[ScorerSpec],
+        baseline_run_id: str | None = None,
+    ) -> EvalRunRecord:
+        body: dict[str, Any] = {"scorer_specs": scorer_specs}
+        if baseline_run_id is not None:
+            body["baseline_run_id"] = baseline_run_id
+        res = self._http.post(f"/v1/eval-runs/{eval_run_id}/experiment", body)
+        return res["eval_run"]
+
+    def compare(self, eval_run_id: str, *, baseline_run_id: str) -> CompareResponse:
+        return self._http.get(
+            with_query(f"/v1/eval-runs/{eval_run_id}/compare", baseline=baseline_run_id)
+        )
+
+
+class SuitesResource:
+    def __init__(self, http: HttpClient) -> None:
+        self._http = http
+
+    def create(
+        self,
+        *,
+        name: str,
+        target_type: EvalTargetType,
+        description: str | None = None,
+        dataset_id: str | None = None,
+        scorer_ids: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> EvalSuiteRecord:
+        body: dict[str, Any] = {"name": name, "target_type": target_type}
+        if description is not None:
+            body["description"] = description
+        if dataset_id is not None:
+            body["dataset_id"] = dataset_id
+        if scorer_ids is not None:
+            body["scorer_ids"] = scorer_ids
+        if metadata is not None:
+            body["metadata"] = metadata
+        res = self._http.post("/v1/eval-suites", body)
+        return res["suite"]
+
+    def list(
+        self,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> EvalSuiteList:
+        return self._http.get(with_query("/v1/eval-suites", limit=limit, cursor=cursor))
+
+    def get(self, suite_id: str) -> EvalSuiteRecord:
+        res = self._http.get(f"/v1/eval-suites/{suite_id}")
+        return res["suite"]
+
+    def run(
+        self,
+        suite_id: str,
+        *,
+        metadata: dict[str, Any] | None = None,
+    ) -> EvalRunRecord:
+        body: dict[str, Any] = {}
+        if metadata is not None:
+            body["metadata"] = metadata
+        res = self._http.post(f"/v1/eval-suites/{suite_id}/run", body)
+        return res["eval_run"]
+
+
+class CasesResource:
+    def __init__(self, http: HttpClient) -> None:
+        self._http = http
+
+    def create(
+        self,
+        suite_id: str,
+        *,
+        name: str,
+        dataset_example_id: str | None = None,
+        source_run_id: str | None = None,
+        source_finding_id: str | None = None,
+        source_graph_ref: str | None = None,
+        input_bundle: dict[str, Any] | None = None,
+        mutations: list[dict[str, Any]] | None = None,
+        expected: dict[str, Any] | None = None,
+        assertions: list[dict[str, Any]] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> EvalCase:
+        body: dict[str, Any] = {"name": name}
+        if dataset_example_id is not None:
+            body["dataset_example_id"] = dataset_example_id
+        if source_run_id is not None:
+            body["source_run_id"] = source_run_id
+        if source_finding_id is not None:
+            body["source_finding_id"] = source_finding_id
+        if source_graph_ref is not None:
+            body["source_graph_ref"] = source_graph_ref
+        if input_bundle is not None:
+            body["input_bundle"] = input_bundle
+        if mutations is not None:
+            body["mutations"] = mutations
+        if expected is not None:
+            body["expected"] = expected
+        if assertions is not None:
+            body["assertions"] = assertions
+        if metadata is not None:
+            body["metadata"] = metadata
+        res = self._http.post(f"/v1/eval-suites/{suite_id}/cases", body)
+        return res["case"]
+
+    def create_from_run(
+        self,
+        suite_id: str,
+        *,
+        source_run_id: str,
+        name: str | None = None,
+        mutations: list[dict[str, Any]] | None = None,
+        expected: dict[str, Any] | None = None,
+        assertions: list[dict[str, Any]] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> EvalCase:
+        body: dict[str, Any] = {"source_run_id": source_run_id}
+        if name is not None:
+            body["name"] = name
+        if mutations is not None:
+            body["mutations"] = mutations
+        if expected is not None:
+            body["expected"] = expected
+        if assertions is not None:
+            body["assertions"] = assertions
+        if metadata is not None:
+            body["metadata"] = metadata
+        res = self._http.post(f"/v1/eval-suites/{suite_id}/cases/from-run", body)
+        return res["case"]
+
+    def list(
+        self,
+        suite_id: str,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> EvalCaseList:
+        return self._http.get(
+            with_query(f"/v1/eval-suites/{suite_id}/cases", limit=limit, cursor=cursor)
+        )
+
+
+class EvalRunsResource:
+    def __init__(self, http: HttpClient) -> None:
+        self._http = http
+
+    def get(self, eval_run_id: str) -> EvalRunRecord:
+        res = self._http.get(f"/v1/eval-runs/{eval_run_id}")
+        return res["eval_run"]
+
+    def list_results(
+        self,
+        eval_run_id: str,
+        *,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> EvalResultRowList:
+        return self._http.get(
+            with_query(f"/v1/eval-runs/{eval_run_id}/results", limit=limit, cursor=cursor)
+        )
+
+
 class EvalsResource:
     def __init__(self, http: HttpClient, runs: RunsResource) -> None:
         self._http = http
         self._runs = runs
         self._monitors = MonitorsResource(http)
+        self.datasets = DatasetsResource(http)
+        self.scorers = ScorersResource(http)
+        self.suites = SuitesResource(http)
+        self.cases = CasesResource(http)
+        self.eval_runs = EvalRunsResource(http)
+        self.experiments = ExperimentsResource(http)
 
     def run_case(
         self,
