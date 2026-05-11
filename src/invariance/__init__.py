@@ -25,6 +25,8 @@ from .kb import KbResource
 from .ask import AskResource
 from .memory import MemoryResource
 from .evals import EvalsResource
+from .recipes import RecipesResource
+from .guardrails import GuardrailsResource
 from .async_client import (
     AsyncAgentsResource,
     AsyncAskResource,
@@ -104,6 +106,8 @@ __all__ = [
     "AskResource",
     "MemoryResource",
     "EvalsResource",
+    "RecipesResource",
+    "GuardrailsResource",
     "AsyncKbResource",
     "AsyncAskResource",
     "AsyncMemoryResource",
@@ -151,6 +155,8 @@ class Invariance:
         self.ask = AskResource(self._http)
         self.memory = MemoryResource(self._http)
         self.evals = EvalsResource(self._http, self.runs)
+        self.recipes = RecipesResource(self._http)
+        self.guardrails = GuardrailsResource(self._http)
 
     def close(self) -> None:
         self._http.close()

@@ -693,3 +693,129 @@ class BuiltinScorer(TypedDict, total=False):
 
 class BuiltinScorerList(TypedDict):
     data: list[BuiltinScorer]
+
+
+# ── Operational Graph ────────────────────────────────────────────────────────
+
+GuardrailMode = Literal["suggested", "shadow", "active_monitor"]
+GuardrailStatus = Literal[
+    "suggested", "accepted", "shadow", "active_monitor", "rejected"
+]
+
+
+class OperationalEntity(TypedDict, total=False):
+    id: str
+    run_id: str | None
+    kind: str
+    source: str
+    external_id: str | None
+    title: str
+    attributes: dict[str, Any]
+    created_at: str
+
+
+class OperationalEdgeProvenance(TypedDict, total=False):
+    method: str
+    source_artifacts: list[str]
+    matching_features: list[str]
+    alternatives: list[str]
+    risk_impact: Literal["none", "low", "medium", "high", "critical"]
+
+
+class OperationalEdge(TypedDict, total=False):
+    id: str
+    run_id: str
+    source_id: str
+    target_id: str
+    kind: str
+    confidence: float
+    evidence_node_ids: list[str]
+    provenance: OperationalEdgeProvenance
+    recipe_id: str | None
+    created_at: str
+
+
+class OperationalFindingEvidence(TypedDict):
+    label: str
+    ref: str
+    type: Literal["trace", "system", "doc", "history", "human"]
+
+
+class RecommendedGuardrail(TypedDict):
+    title: str
+    rule: str
+    mode: GuardrailMode
+
+
+class OperationalFinding(TypedDict, total=False):
+    id: str
+    run_id: str
+    severity: Severity
+    title: str
+    summary: str
+    affected_entity_ids: list[str]
+    evidence_node_ids: list[str]
+    evidence: list[OperationalFindingEvidence]
+    missing_control: str | None
+    recommended_guardrail: RecommendedGuardrail | None
+    status: Literal["open", "acknowledged", "resolved", "rejected"]
+    created_at: str
+
+
+class OperationalGraphCompleteness(TypedDict):
+    business_object_linked: bool
+    policy_context_found: bool
+    owner_found: bool
+    approval_context_found: bool
+    downstream_state_change_found: bool
+    score: float
+
+
+class OperationalGraphResponse(TypedDict):
+    run_id: str
+    entities: list[OperationalEntity]
+    edges: list[OperationalEdge]
+    findings: list[OperationalFinding]
+    completeness: OperationalGraphCompleteness
+
+
+# ── Recipes & Guardrails ─────────────────────────────────────────────────────
+
+
+class Recipe(TypedDict):
+    id: str
+    slug: str
+    title: str
+    domain: str
+    description: str
+    control: str
+    rule: str
+    default_mode: GuardrailMode
+    enabled: bool
+    builtin: bool
+    created_at: str
+    updated_at: str
+
+
+class RecipeList(TypedDict):
+    data: list[Recipe]
+    next_cursor: str | None
+
+
+class Guardrail(TypedDict):
+    id: str
+    agent_id: str
+    recipe_id: str | None
+    finding_id: str | None
+    title: str
+    rule: str
+    mode: GuardrailMode
+    status: GuardrailStatus
+    monitor_id: str | None
+    created_at: str
+    updated_at: str
+
+
+class GuardrailList(TypedDict):
+    data: list[Guardrail]
+    next_cursor: str | None

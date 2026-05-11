@@ -5,7 +5,7 @@ import threading
 import traceback
 from typing import Any
 
-from ._types import RunList
+from ._types import OperationalGraphResponse, RunList
 from .client import HttpClient
 from .config import Features
 from ._internal import build_node_body, now_ms as _now_ms, random_node_id as _random_node_id
@@ -436,3 +436,8 @@ class RunsResource:
     def get(self, id: str) -> Run:
         res = self._http.get(f"/v1/runs/{id}")
         return Run(self._http, res["run"], self._signing_key)
+
+    def operational_graph(self, run_id: str) -> "OperationalGraphResponse":
+        """Fetch the operational graph for a run — entities, edges, findings,
+        and a completeness score (MVP spec §4)."""
+        return self._http.get(f"/v1/runs/{run_id}/operational-graph")
