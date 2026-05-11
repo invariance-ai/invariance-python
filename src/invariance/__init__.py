@@ -23,12 +23,16 @@ from .reviews import ReviewsResource
 from .narratives import NarrativesResource
 from .kb import KbResource
 from .ask import AskResource
+from .memory import MemoryResource
+from .evals import EvalsResource
 from .async_client import (
     AsyncAgentsResource,
     AsyncAskResource,
+    AsyncEvalsResource,
     AsyncFindingsResource,
     AsyncInvariance,
     AsyncKbResource,
+    AsyncMemoryResource,
     AsyncMonitorsResource,
     AsyncNarrativesResource,
     AsyncNodesResource,
@@ -98,8 +102,12 @@ __all__ = [
     "AsyncNarrativesResource",
     "KbResource",
     "AskResource",
+    "MemoryResource",
+    "EvalsResource",
     "AsyncKbResource",
     "AsyncAskResource",
+    "AsyncMemoryResource",
+    "AsyncEvalsResource",
     "generate_keypair",
     "get_public_key",
     "sign_ed25519",
@@ -141,6 +149,8 @@ class Invariance:
         self.node_types = NodeTypesResource(self._http)
         self.kb = KbResource(self._http)
         self.ask = AskResource(self._http)
+        self.memory = MemoryResource(self._http)
+        self.evals = EvalsResource(self._http, self.runs)
 
     def close(self) -> None:
         self._http.close()

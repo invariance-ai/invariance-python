@@ -167,3 +167,73 @@ async def test_async_handoff_fields_emit():
     assert nodes[1]["handoff_to"] == "a_3"
     assert nodes[1]["handoff_reason"] == "hand over"
     assert token is None
+
+
+def _async_inv_with_handler(handler):
+    transport = httpx.MockTransport(handler)
+    inv = AsyncInvariance(api_key="inv_test", api_url="http://test.local")
+    inv._http._client = httpx.AsyncClient(
+        base_url="http://test.local",
+        headers={"Authorization": "Bearer inv_test"},
+        transport=transport,
+    )
+    return inv
+
+
+@pytest.mark.asyncio
+async def test_async_memory_read_and_write():
+    seen: list[dict] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen.append({"method": request.method, "path": request.url.path, "body": json.loads(request.content)})
+        return httpx.Response(
+            200,
+            json={
+                "access": {
+                    "id": "ma_1",
+                    "run_id": "r_1",
+                    "node_id": "n_1",
+                    "agent_id": "a_1",
+                    "access_type": "read",
+                    "subject_type": "customer",
+                    "subject_id": "cust_1",
+                    "key": "plan",
+                    "value": None,
+                    "used_for": "x",
+                    "source_node_id": None,
+                    "timestamp": "t",
+                },
+                "record": None,
+            },
+        )
+
+    inv = _async_inv_with_handler(handler)
+    async with inv:
+        await inv.memory.read(subject_type="customer", subject_id="cust_1", key="plan", used_for="x", run_id="r_1")
+        await inv.memory.write(subject_type="customer", subject_id="cust_1", key="plan", value="pro", used_for="x", run_id="r_1")
+    assert seen[0]["path"] == "/v1/memory/read"
+    assert seen[1]["path"] == "/v1/memory/write"
+    assert seen[1]["body"]["source"] == "agent_write"
+    assert seen[1]["body"]["value"] == "pro"
+
+
+@pytest.mark.asyncio
+async def test_async_evals_run_case_passes():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        method = request.method
+        if method == "POST" and path == "/v1/runs":
+            return httpx.Response(200, json={"run": {"id": "run_eval", "agent_id": "a", "name": "x", "status": "open", "metadata": json.loads(request.content).get("metadata", {}), "created_at": "t", "updated_at": "t"}})
+        if method == "PATCH":
+            return httpx.Response(200, json={"run": {"id": "run_eval", "status": "completed"}})
+        if method == "GET" and path == "/v1/findings":
+            return httpx.Response(200, json={"data": [], "next_cursor": None})
+        return httpx.Response(404)
+
+    inv = _async_inv_with_handler(handler)
+    async with inv:
+        async def h(run):
+            return None
+        result = await inv.evals.run_case(suite="s", case="c", handler=h)
+    assert result["status"] == "pass"
+    assert result["run_id"] == "run_eval"

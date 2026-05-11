@@ -394,3 +394,114 @@ class Narrative(TypedDict):
     total_node_count: int
     created_at: str
     updated_at: str
+
+
+# ── Memory ─────────────────────────────────────────────────────────────────
+
+MemorySubjectType = Literal[
+    "customer", "account", "user", "policy", "workflow", "preference"
+]
+MemorySource = Literal[
+    "agent_write", "human_write", "crm", "ticket", "policy_doc", "external_system"
+]
+MemoryAccessType = Literal["read", "write"]
+MemoryDivergenceKind = Literal[
+    "stale_memory",
+    "contradicted_memory",
+    "unsupported_memory",
+    "overgeneralized_memory",
+    "memory_used_without_source",
+    "memory_caused_bad_action",
+    "memory_not_updated_after_ground_truth_change",
+]
+MemoryDivergenceStatus = Literal["open", "dismissed", "resolved"]
+EvidenceRefKind = Literal["node", "tool_call", "llm_call", "document", "system_record"]
+
+
+class EvidenceRef(TypedDict, total=False):
+    kind: EvidenceRefKind
+    id: str
+    uri: str
+    excerpt: str
+
+
+class MemoryRecord(TypedDict):
+    id: str
+    agent_id: str
+    subject_type: MemorySubjectType
+    subject_id: str
+    claim: str
+    value: Any
+    source: MemorySource
+    confidence: float
+    valid_from: str
+    valid_until: str | None
+    last_verified_at: str | None
+    superseded_by: str | None
+    provenance: list[EvidenceRef]
+
+
+class MemoryAccess(TypedDict):
+    id: str
+    run_id: str
+    node_id: str
+    agent_id: str
+    access_type: MemoryAccessType
+    subject_type: MemorySubjectType
+    subject_id: str
+    key: str
+    value: Any
+    used_for: str
+    source_node_id: str | None
+    timestamp: str
+
+
+class MemoryReadResponse(TypedDict):
+    access: MemoryAccess
+    record: MemoryRecord | None
+
+
+class MemoryWriteResponse(TypedDict):
+    access: MemoryAccess
+    record: MemoryRecord
+
+
+# ── Evals ──────────────────────────────────────────────────────────────────
+
+EvalStatus = Literal["pass", "fail"]
+
+
+class EvalMetadata(TypedDict, total=False):
+    suite: str
+    case: str
+    expected: Any
+    inputs: Any
+    tags: list[str]
+
+
+class EvalResult(TypedDict):
+    run_id: str
+    suite: str
+    case: str
+    status: EvalStatus
+    findings: list[Finding]
+
+
+class EvalCaseRecord(TypedDict):
+    run_id: str
+    case: str
+    status: EvalStatus
+    created_at: str
+
+
+class EvalListResponse(TypedDict):
+    suite: str
+    runs: list[EvalCaseRecord]
+    next_cursor: str | None
+
+
+class EvalSummary(TypedDict):
+    suite: str
+    total: int
+    passed: int
+    failed: int

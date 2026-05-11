@@ -13,3 +13,8 @@ build/
 *.log
 .DS_Store
 
+
+# Local working state — not tracked
+_archive/
+_review/
+_worktrees/
