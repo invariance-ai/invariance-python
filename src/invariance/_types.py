@@ -819,3 +819,102 @@ class Guardrail(TypedDict):
 class GuardrailList(TypedDict):
     data: list[Guardrail]
     next_cursor: str | None
+
+
+# ── Operators ──────────────────────────────────────────────────────────────
+
+OperatorType = Literal["agent", "human"]
+
+
+class Operator(TypedDict, total=False):
+    id: str
+    name: str
+    public_key: str | None
+    project_id: str
+    created_at: str
+    operator_type: OperatorType
+
+
+class OperatorMeResponse(TypedDict, total=False):
+    operator: Operator
+    api_key: ApiKeyPublic
+
+
+class CreateOperatorResponse(TypedDict):
+    agent: Operator
+    api_key: ApiKeyWithRaw
+
+
+class OperatorList(TypedDict):
+    data: list[Operator]
+    next_cursor: str | None
+
+
+# ── Agent Sessions ─────────────────────────────────────────────────────────
+
+AgentSessionSource = Literal[
+    "anthropic_sdk",
+    "openai_sdk",
+    "invariance_cli",
+    "mcp",
+    "claude_code",
+    "codex_cli",
+    "screen_recording",
+    "microphone",
+    "meeting",
+    "granola_note",
+    "manual_note",
+    "api",
+    "other",
+]
+
+AgentSessionType = Literal["coding", "review", "meeting", "note", "recording", "other"]
+
+
+class AgentSession(TypedDict, total=False):
+    id: str
+    project_id: str
+    operator_id: str | None
+    agent_id: str | None
+    source: AgentSessionSource
+    session_type: AgentSessionType | None
+    title: str | None
+    external_session_id: str | None
+    model: str | None
+    cwd: str | None
+    status: str
+    created_at: str
+    updated_at: str | None
+    ended_at: str | None
+
+
+class AgentSessionList(TypedDict):
+    data: list[AgentSession]
+    next_cursor: str | None
+
+
+class CreateAgentSessionResponse(TypedDict):
+    session: AgentSession
+
+
+class AppendEventsResponse(TypedDict):
+    appended: int
+
+
+# ── Operational Context ────────────────────────────────────────────────────
+
+
+class SystemRecord(TypedDict):
+    source: MemorySource
+    external_id: str
+    fetched_at: str
+    fields: dict[str, Any]
+
+
+class OperationalContext(TypedDict, total=False):
+    metadata: dict[str, Any]
+    custom_fields: dict[str, Any]
+    type: str
+    memory_reads: list[MemoryAccess]
+    memory_writes: list[MemoryAccess]
+    authoritative_records: list[SystemRecord]

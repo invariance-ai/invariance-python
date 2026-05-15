@@ -27,6 +27,9 @@ from .memory import MemoryResource
 from .evals import EvalsResource
 from .recipes import RecipesResource
 from .guardrails import GuardrailsResource
+from .operators import OperatorsResource
+from .sessions import SessionsResource
+from .operational_context import OperationalContext, empty_operational_context
 from .async_client import (
     AsyncAgentsResource,
     AsyncAskResource,
@@ -39,10 +42,12 @@ from .async_client import (
     AsyncNarrativesResource,
     AsyncNodesResource,
     AsyncNodeTypesResource,
+    AsyncOperatorsResource,
     AsyncProofsResource,
     AsyncReviewsResource,
     AsyncRun,
     AsyncRunsResource,
+    AsyncSessionsResource,
     AsyncSignalsResource,
     AsyncStep,
     async_trace,
@@ -108,6 +113,12 @@ __all__ = [
     "EvalsResource",
     "RecipesResource",
     "GuardrailsResource",
+    "OperatorsResource",
+    "SessionsResource",
+    "OperationalContext",
+    "empty_operational_context",
+    "AsyncOperatorsResource",
+    "AsyncSessionsResource",
     "AsyncKbResource",
     "AsyncAskResource",
     "AsyncMemoryResource",
@@ -157,6 +168,8 @@ class Invariance:
         self.evals = EvalsResource(self._http, self.runs)
         self.recipes = RecipesResource(self._http)
         self.guardrails = GuardrailsResource(self._http)
+        self.operators = OperatorsResource(self._http)
+        self.sessions = SessionsResource(self._http)
 
     def close(self) -> None:
         self._http.close()
