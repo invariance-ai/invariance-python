@@ -237,3 +237,34 @@ async def test_async_evals_run_case_passes():
         result = await inv.evals.run_case(suite="s", case="c", handler=h)
     assert result["status"] == "pass"
     assert result["run_id"] == "run_eval"
+
+
+@pytest.mark.asyncio
+async def test_async_operators_me_hits_path():
+    seen: dict = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen["path"] = request.url.path
+        return httpx.Response(200, json={"operator": {"id": "op_1", "name": "n"}})
+
+    inv = _async_inv_with_handler(handler)
+    async with inv:
+        res = await inv.operators.me()
+    assert seen["path"] == "/v1/operators/me"
+    assert res["operator"]["id"] == "op_1"
+
+
+@pytest.mark.asyncio
+async def test_async_sessions_from_claude_code_defaults():
+    seen: dict = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"session": {"id": "sess_1"}})
+
+    inv = _async_inv_with_handler(handler)
+    async with inv:
+        await inv.sessions.from_claude_code(title="my run")
+    assert seen["body"]["source"] == "claude_code"
+    assert seen["body"]["session_type"] == "coding"
+    assert seen["body"]["title"] == "my run"

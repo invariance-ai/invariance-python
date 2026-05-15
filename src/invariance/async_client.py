@@ -1389,6 +1389,130 @@ class AsyncEvalsResource:
         return res.get("data", [])
 
 
+class AsyncOperatorsResource:
+    def __init__(self, http: AsyncHttpClient) -> None:
+        self._http = http
+
+    async def me(self) -> Any:
+        return await self._http.get("/v1/operators/me")
+
+    async def create(
+        self,
+        *,
+        name: str,
+        project_id: str,
+        operator_type: str | None = None,
+        public_key: str | None = None,
+        key_mode: str | None = None,
+    ) -> Any:
+        body: dict[str, object] = {"name": name, "project_id": project_id}
+        if operator_type is not None:
+            body["operator_type"] = operator_type
+        if public_key is not None:
+            body["public_key"] = public_key
+        if key_mode is not None:
+            body["key_mode"] = key_mode
+        return await self._http.post("/v1/operators", json=body)
+
+    async def list(
+        self,
+        *,
+        project_id: str,
+        operator_type: str | None = None,
+    ) -> Any:
+        return await self._http.get(
+            with_query(
+                "/v1/operators",
+                project_id=project_id,
+                operator_type=operator_type,
+            )
+        )
+
+    async def get(self, id: str) -> Any:
+        res = await self._http.get(f"/v1/operators/{id}")
+        return res["operator"]
+
+
+class AsyncSessionsResource:
+    def __init__(self, http: AsyncHttpClient) -> None:
+        self._http = http
+
+    async def create(
+        self,
+        *,
+        source: str,
+        session_type: str | None = None,
+        title: str | None = None,
+        external_session_id: str | None = None,
+        model: str | None = None,
+        cwd: str | None = None,
+        client_version: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> Any:
+        body: dict[str, Any] = {"source": source}
+        for k, v in (
+            ("session_type", session_type),
+            ("title", title),
+            ("external_session_id", external_session_id),
+            ("model", model),
+            ("cwd", cwd),
+            ("client_version", client_version),
+            ("metadata", metadata),
+        ):
+            if v is not None:
+                body[k] = v
+        res = await self._http.post("/v1/agent-sessions", json=body)
+        return res["session"]
+
+    async def list(
+        self,
+        *,
+        project_id: str | None = None,
+        operator_id: str | None = None,
+        session_type: str | None = None,
+        source: str | None = None,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> Any:
+        return await self._http.get(
+            with_query(
+                "/v1/agent-sessions",
+                project_id=project_id,
+                operator_id=operator_id,
+                session_type=session_type,
+                source=source,
+                cursor=cursor,
+                limit=limit,
+            )
+        )
+
+    async def get(self, id: str) -> Any:
+        res = await self._http.get(f"/v1/agent-sessions/{id}")
+        return res["session"]
+
+    async def append_events(
+        self, id: str, events: list[dict[str, Any]]
+    ) -> Any:
+        return await self._http.post(
+            f"/v1/agent-sessions/{id}/events", json={"events": events}
+        )
+
+    async def from_claude_code(self, **kwargs: Any) -> Any:
+        kwargs.setdefault("source", "claude_code")
+        kwargs.setdefault("session_type", "coding")
+        return await self.create(**kwargs)
+
+    async def from_meeting_notes(self, **kwargs: Any) -> Any:
+        kwargs.setdefault("source", "meeting")
+        kwargs.setdefault("session_type", "meeting")
+        return await self.create(**kwargs)
+
+    async def from_granola_note(self, **kwargs: Any) -> Any:
+        kwargs.setdefault("source", "granola_note")
+        kwargs.setdefault("session_type", "note")
+        return await self.create(**kwargs)
+
+
 class AsyncInvariance:
     def __init__(
         self,
@@ -1426,6 +1550,8 @@ class AsyncInvariance:
         self.ask = AsyncAskResource(self._http)
         self.memory = AsyncMemoryResource(self._http)
         self.evals = AsyncEvalsResource(self._http, self.runs)
+        self.operators = AsyncOperatorsResource(self._http)
+        self.sessions = AsyncSessionsResource(self._http)
 
     async def aclose(self) -> None:
         await self._http.aclose()
