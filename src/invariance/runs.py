@@ -378,6 +378,9 @@ class RunsResource:
         buffered: bool = True,
         replay_seed: str | None = None,
         parent_handoff_token: str | None = None,
+        case_id: str | None = None,
+        tenant_id: str | None = None,
+        end_user_id: str | None = None,
     ) -> Run:
         body: dict[str, Any] = {}
         if name is not None:
@@ -393,6 +396,23 @@ class RunsResource:
             body["replay_seed"] = replay_seed
         if parent_handoff_token is not None:
             body["parent_handoff_token"] = parent_handoff_token
+        # Auto-stamp case dimensions from an active ``cases.with_case(...)``
+        # unless the caller passed explicit overrides. Imported lazily to avoid
+        # an import cycle (cases.py imports from this module's client).
+        from .cases import active_case_context
+
+        ctx = active_case_context()
+        effective_case_id = case_id if case_id is not None else (ctx.case_id if ctx else None)
+        if effective_case_id is not None:
+            body["case_id"] = effective_case_id
+        if tenant_id is not None:
+            body["tenant_id"] = tenant_id
+        elif ctx is not None and ctx.tenant_id is not None:
+            body["tenant_id"] = ctx.tenant_id
+        if end_user_id is not None:
+            body["end_user_id"] = end_user_id
+        elif ctx is not None and ctx.end_user_id is not None:
+            body["end_user_id"] = ctx.end_user_id
         res = self._http.post("/v1/runs", json=body)
         return Run(
             self._http,
