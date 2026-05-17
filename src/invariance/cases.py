@@ -26,6 +26,7 @@ from contextvars import ContextVar
 from typing import Any, Iterator, Literal
 
 from ._query import with_query
+from ._types import WorkflowEventActorType, WorkflowEventList
 from .client import HttpClient
 
 CaseStatus = Literal["open", "closed"]
@@ -97,6 +98,49 @@ class CasesResource:
         """Fetch a case with its linked runs (newest first, capped server-side)."""
         res = self._http.get(f"/v1/cases/{id}")
         return res["case"]
+
+    def evidence(self, id: str) -> dict[str, Any]:
+        """Fetch normalized case evidence: runs, nodes, events, actors, and outcome."""
+        return self._http.get(f"/v1/cases/{id}/evidence")
+
+    def list_events(
+        self,
+        id: str,
+        *,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> WorkflowEventList:
+        return self._http.get(
+            with_query(f"/v1/cases/{id}/events", cursor=cursor, limit=limit)
+        )
+
+    def create_event(
+        self,
+        id: str,
+        *,
+        type: str,
+        actor_type: WorkflowEventActorType | None = None,
+        actor_id: str | None = None,
+        payload: dict[str, Any] | None = None,
+        evidence_node_ids: list[str] | None = None,
+        evidence_refs: list[dict[str, Any]] | None = None,
+        occurred_at: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"type": type}
+        if actor_type is not None:
+            body["actor_type"] = actor_type
+        if actor_id is not None:
+            body["actor_id"] = actor_id
+        if payload is not None:
+            body["payload"] = payload
+        if evidence_node_ids is not None:
+            body["evidence_node_ids"] = evidence_node_ids
+        if evidence_refs is not None:
+            body["evidence_refs"] = evidence_refs
+        if occurred_at is not None:
+            body["occurred_at"] = occurred_at
+        res = self._http.post(f"/v1/cases/{id}/events", json=body)
+        return res["event"]
 
     def list(
         self,

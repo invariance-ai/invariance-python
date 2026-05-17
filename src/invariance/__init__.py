@@ -30,6 +30,8 @@ from .guardrails import GuardrailsResource
 from .operators import OperatorsResource
 from .sessions import SessionsResource
 from .cases import CasesResource
+from .events import EventsResource
+from .workflows import WorkflowDefinitionsResource
 from .operational_context import OperationalContext, empty_operational_context
 from .async_client import (
     AsyncAgentsResource,
@@ -117,6 +119,8 @@ __all__ = [
     "OperatorsResource",
     "SessionsResource",
     "CasesResource",
+    "EventsResource",
+    "WorkflowDefinitionsResource",
     "OperationalContext",
     "empty_operational_context",
     "AsyncOperatorsResource",
@@ -173,6 +177,8 @@ class Invariance:
         self.operators = OperatorsResource(self._http)
         self.sessions = SessionsResource(self._http)
         self.cases = CasesResource(self._http)
+        self.events = EventsResource(self._http)
+        self.workflow_definitions = WorkflowDefinitionsResource(self._http)
 
     def close(self) -> None:
         self._http.close()

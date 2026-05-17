@@ -292,6 +292,115 @@ class ReviewList(TypedDict):
     next_cursor: str | None
 
 
+# ── Workflow cases / events / definitions ─────────────────────────────────
+
+
+CaseStatus = Literal["open", "closed"]
+WorkflowEventActorType = Literal[
+    "human", "agent", "llm", "service", "integration", "policy", "system"
+]
+EvidenceRefKind = Literal[
+    "run", "node", "ticket", "doc", "slack", "github", "meeting", "url", "external"
+]
+WorkflowFieldType = Literal[
+    "string", "number", "boolean", "datetime", "url", "currency_usd", "enum"
+]
+WorkflowOutcomeKind = Literal["success", "failure", "neutral"]
+
+
+class Case(TypedDict):
+    id: str
+    agent_id: str
+    tenant_id: str | None
+    end_user_id: str | None
+    workflow_key: str
+    status: CaseStatus
+    outcome: str | None
+    outcome_value_usd: float | None
+    owner: str | None
+    custom_attrs: dict[str, Any]
+    opened_at: str
+    closed_at: str | None
+    created_at: str
+    updated_at: str
+
+
+class CaseList(TypedDict):
+    data: list[Case]
+    next_cursor: str | None
+
+
+class WorkflowEvidenceRef(TypedDict, total=False):
+    kind: EvidenceRefKind
+    id: str
+    url: str
+    label: str
+    metadata: dict[str, Any]
+
+
+class WorkflowEvent(TypedDict):
+    id: str
+    case_id: str
+    agent_id: str
+    tenant_id: str | None
+    end_user_id: str | None
+    type: str
+    actor_type: WorkflowEventActorType | None
+    actor_id: str | None
+    payload: dict[str, Any]
+    evidence_node_ids: list[str]
+    evidence_refs: list[WorkflowEvidenceRef]
+    occurred_at: str
+    created_at: str
+
+
+class WorkflowEventList(TypedDict):
+    data: list[WorkflowEvent]
+    next_cursor: str | None
+
+
+class WorkflowDefinitionField(TypedDict, total=False):
+    name: str
+    label: str
+    type: WorkflowFieldType
+    required: bool
+    enum: list[str]
+    description: str
+
+
+class WorkflowDefinitionStep(TypedDict, total=False):
+    type: str
+    label: str
+    required: bool
+    description: str
+
+
+class WorkflowDefinitionOutcome(TypedDict, total=False):
+    value: str
+    label: str
+    kind: WorkflowOutcomeKind
+
+
+class WorkflowMetricWidget(TypedDict, total=False):
+    kind: Literal["count", "sum_field", "avg_field"]
+    label: str
+    event_type: str
+    field: str
+
+
+class WorkflowDefinition(TypedDict):
+    key: str
+    agent_id: str
+    display_name: str
+    description: str | None
+    expected_fields: list[WorkflowDefinitionField]
+    expected_steps: list[WorkflowDefinitionStep]
+    allowed_outcomes: list[WorkflowDefinitionOutcome]
+    custom_metrics: list[WorkflowMetricWidget]
+    created_at: str
+    updated_at: str
+
+
 # ── Narratives ─────────────────────────────────────────────────────────────
 
 
