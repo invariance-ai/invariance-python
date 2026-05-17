@@ -29,6 +29,7 @@ from .operators import OperatorsResource
 from .recipes import RecipesResource
 from .guardrails import GuardrailsResource
 from .sessions import SessionsResource
+from .cases import CasesResource
 from .operational_context import OperationalContext, empty_operational_context
 from .async_client import (
     AsyncAgentsResource,
@@ -117,6 +118,7 @@ __all__ = [
     "RecipesResource",
     "GuardrailsResource",
     "SessionsResource",
+    "CasesResource",
     "OperationalContext",
     "empty_operational_context",
     "AsyncKbResource",
@@ -174,6 +176,7 @@ class Invariance:
         self.recipes = RecipesResource(self._http)
         self.guardrails = GuardrailsResource(self._http)
         self.sessions = SessionsResource(self._http)
+        self.cases = CasesResource(self._http)
 
     def close(self) -> None:
         self._http.close()
