@@ -1,6 +1,6 @@
 # Invariance Python SDK
 
-Official Python SDK for the [Invariance AI](https://invariance.ai) platform. Start runs, emit nodes, and drive the customer loop from any Python agent stack.
+Official Python SDK for the [Invariance AI](https://invariance.ai) platform. Create cases for workflow instances, attach runs/nodes as evidence, and close outcomes from any Python agent stack.
 
 Part of the Invariance SDK family:
 
@@ -18,38 +18,30 @@ pip install "invariance-sdk @ git+https://github.com/invariance-ai/invariance-py
 
 Requires Python >= 3.10.
 
-## Quickstart
+## Quickstart: Trace A Workflow Instance
 
 ```python
 from invariance import Invariance
 
 inv = Invariance(api_key="inv_live_...")  # or read from INVARIANCE_API_KEY
 
-# Attach business identifiers at run.start so traces are queryable by
-# customer / ticket / refund / order — whatever you operate on.
-with inv.runs.start(
-    name="refund-flow",
-    metadata={"customer_id": "c_123", "ticket_id": "t_456", "refund_id": "rf_789"},
-) as run:
-    # Tool call: action_type is the tool name, input/output are auto-recorded
-    with run.step("stripe.refunds.create", input={"order_id": order_id}) as s:
-        try:
-            result = stripe_refund(order_id)
-            s.output = {"refund_id": result.id, "amount": result.amount}
-        except Exception as exc:
-            # Step records the error and re-raises; the enclosing run is
-            # marked failed when the with-block exits via exception
-            s.error = {"type": type(exc).__name__, "message": str(exc)}
-            raise
+c = inv.cases.create(
+    workflow_key="support.escalation",
+    tenant_id="acme",
+    end_user_id="cus_123",
+)
 
-    run.step(
-        "decision",
-        input={"reason": "refund issued"},
-        output={"status": "completed"},
-    )
+with inv.cases.with_case(c):
+    run = inv.runs.start(name="triage")
+    with run.step("stripe.refunds.create", input={"order_id": order_id}) as s:
+        result = stripe_refund(order_id)
+        s.output = {"refund_id": result.id, "amount": result.amount}
+    run.finish()
+
+inv.cases.close(c["id"], outcome="resolved", value_usd=250)
 ```
 
-Exiting the outer `with` block finishes the run. If the block raises, the run is marked failed automatically. To fail a run explicitly without raising:
+Cases are workflow instances. Runs remain execution evidence, and nodes are the concrete tool calls, LLM calls, notes, and decisions inside a run. To fail a run explicitly:
 
 ```python
 run.fail("payment provider returned 5xx")
