@@ -1027,3 +1027,112 @@ class OperationalContext(TypedDict, total=False):
     memory_reads: list[MemoryAccess]
     memory_writes: list[MemoryAccess]
     authoritative_records: list[SystemRecord]
+
+
+# --- Cortex jobs (generic evals, counterfactuals, attribution) ---------
+
+CortexJobKind = Literal[
+    "workflow_eval",
+    "counterfactual_eval",
+    "workflow_experiment",
+    "outcome_attribution",
+    "recommendation_impact_eval",
+    "prompt_variant_eval",
+    "policy_eval",
+]
+
+CortexTargetType = Literal[
+    "run",
+    "case",
+    "workflow",
+    "step",
+    "agent",
+    "prompt",
+    "policy",
+    "recommendation",
+    "external",
+]
+
+CortexJobStatus = Literal[
+    "queued",
+    "leased",
+    "running",
+    "succeeded",
+    "failed",
+    "dead",
+    "cancelled",
+]
+
+
+class CortexJob(TypedDict, total=False):
+    id: str
+    status: CortexJobStatus
+    job_kind: CortexJobKind
+    target_type: CortexTargetType
+    target_ref: str
+    project_id: str
+    created_at: str
+    updated_at: str
+    error: str | None
+
+
+class CreateCortexJobResponse(TypedDict):
+    job_id: str
+    status: CortexJobStatus
+    deduplicated: bool
+
+
+class CortexCriterionResult(TypedDict, total=False):
+    criterion: str
+    passed: bool
+    evidence_refs: list[str]
+    notes: str
+
+
+class WorkflowEvalResult(TypedDict, total=False):
+    kind: Literal["workflow_eval"]
+    passed: bool
+    score: float
+    criteria_results: list[CortexCriterionResult]
+    findings: list[Any]
+    confidence: float
+
+
+class CounterfactualEvalResult(TypedDict, total=False):
+    kind: Literal["counterfactual_eval"]
+    answer: str
+    observed_outcome: str
+    hypothetical_change: str
+    estimated_outcome: str
+    estimated_impact: dict[str, Any]
+    assumptions: list[str]
+    evidence_refs: list[str]
+    confidence: float
+    uncertainty: str
+
+
+class OutcomeAttributionFactor(TypedDict, total=False):
+    factor: str
+    impact: str
+    evidence_refs: list[str]
+
+
+class OutcomeAttributionResult(TypedDict, total=False):
+    kind: Literal["outcome_attribution"]
+    outcome: str
+    primary_factors: list[OutcomeAttributionFactor]
+    confidence: float
+
+
+# Discriminated by ``kind``. Stored as a generic dict on the response so
+# callers can branch without runtime parsing; static checkers see the union.
+CortexJobResultPayload = (
+    WorkflowEvalResult | CounterfactualEvalResult | OutcomeAttributionResult
+)
+
+
+class CortexJobResult(TypedDict, total=False):
+    job_id: str
+    status: CortexJobStatus
+    result: CortexJobResultPayload
+    error: str | None

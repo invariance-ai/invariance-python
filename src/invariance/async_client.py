@@ -19,6 +19,11 @@ from typing import Any, Callable, TypeVar
 import httpx
 
 from ._types import (
+    CortexJob,
+    CortexJobKind,
+    CortexJobResult,
+    CortexTargetType,
+    CreateCortexJobResponse,
     Agent,
     AgentList,
     AskContentBlock,
@@ -957,6 +962,62 @@ class AsyncAskResource:
         return await self._http.post("/v1/ask", json=payload)
 
 
+class AsyncCortexJobsResource:
+    def __init__(self, http: AsyncHttpClient) -> None:
+        self._http = http
+
+    async def create(
+        self,
+        *,
+        project_id: str,
+        job_kind: CortexJobKind,
+        target_type: CortexTargetType,
+        target_ref: str,
+        question: str | None = None,
+        criteria: dict[str, Any] | None = None,
+        input_refs: dict[str, Any] | None = None,
+        input_payload: dict[str, Any] | None = None,
+        options: dict[str, Any] | None = None,
+    ) -> CreateCortexJobResponse:
+        payload: dict[str, Any] = {
+            "project_id": project_id,
+            "job_kind": job_kind,
+            "target_type": target_type,
+            "target_ref": target_ref,
+        }
+        if question is not None:
+            payload["question"] = question
+        if criteria is not None:
+            payload["criteria"] = criteria
+        if input_refs is not None:
+            payload["input_refs"] = input_refs
+        if input_payload is not None:
+            payload["input_payload"] = input_payload
+        if options is not None:
+            payload["options"] = options
+        return await self._http.post("/v1/cortex/jobs", json=payload)
+
+    async def get(self, job_id: str) -> CortexJob:
+        from urllib.parse import quote
+
+        res = await self._http.get(f"/v1/cortex/jobs/{quote(job_id, safe='')}")
+        if isinstance(res, dict) and isinstance(res.get("job"), dict):
+            return res["job"]
+        return res
+
+    async def result(self, job_id: str) -> CortexJobResult:
+        from urllib.parse import quote
+
+        return await self._http.get(
+            f"/v1/cortex/jobs/{quote(job_id, safe='')}/result"
+        )
+
+
+class AsyncCortexResource:
+    def __init__(self, http: AsyncHttpClient) -> None:
+        self.jobs = AsyncCortexJobsResource(http)
+
+
 class AsyncMemoryResource:
     def __init__(self, http: AsyncHttpClient) -> None:
         self._http = http
@@ -1552,6 +1613,7 @@ class AsyncInvariance:
         self.evals = AsyncEvalsResource(self._http, self.runs)
         self.operators = AsyncOperatorsResource(self._http)
         self.sessions = AsyncSessionsResource(self._http)
+        self.cortex = AsyncCortexResource(self._http)
 
     async def aclose(self) -> None:
         await self._http.aclose()
