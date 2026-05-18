@@ -32,10 +32,13 @@ from .sessions import SessionsResource
 from .cases import CasesResource
 from .events import EventsResource
 from .workflows import WorkflowDefinitionsResource
+from .cortex import CortexJobsResource, CortexResource
 from .operational_context import OperationalContext, empty_operational_context
 from .async_client import (
     AsyncAgentsResource,
     AsyncAskResource,
+    AsyncCortexJobsResource,
+    AsyncCortexResource,
     AsyncEvalsResource,
     AsyncFindingsResource,
     AsyncInvariance,
@@ -121,6 +124,8 @@ __all__ = [
     "CasesResource",
     "EventsResource",
     "WorkflowDefinitionsResource",
+    "CortexResource",
+    "CortexJobsResource",
     "OperationalContext",
     "empty_operational_context",
     "AsyncOperatorsResource",
@@ -129,6 +134,8 @@ __all__ = [
     "AsyncAskResource",
     "AsyncMemoryResource",
     "AsyncEvalsResource",
+    "AsyncCortexResource",
+    "AsyncCortexJobsResource",
     "generate_keypair",
     "get_public_key",
     "sign_ed25519",
@@ -179,6 +186,7 @@ class Invariance:
         self.cases = CasesResource(self._http)
         self.events = EventsResource(self._http)
         self.workflow_definitions = WorkflowDefinitionsResource(self._http)
+        self.cortex = CortexResource(self._http)
 
     def close(self) -> None:
         self._http.close()
