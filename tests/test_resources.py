@@ -33,6 +33,45 @@ def test_proofs_verify_run_hits_expected_path():
     assert res["node_count"] == 3
 
 
+def test_runs_operational_graph_hits_expected_path():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url.path == "/v1/runs/run_1/operational-graph"
+        return httpx.Response(
+            200,
+            json={
+                "run_id": "run_1",
+                "entities": [
+                    {
+                        "id": "ent_1",
+                        "kind": "business_object",
+                        "source": "stripe",
+                        "title": "Refund re_1",
+                        "attributes": {},
+                        "created_at": "t",
+                    }
+                ],
+                "edges": [],
+                "findings": [],
+                "completeness": {
+                    "business_object_linked": True,
+                    "policy_context_found": False,
+                    "owner_found": False,
+                    "approval_context_found": False,
+                    "downstream_state_change_found": False,
+                    "score": 0.2,
+                },
+            },
+        )
+
+    inv = _inv_with_handler(handler)
+    graph = inv.runs.operational_graph("run_1")
+    assert graph["run_id"] == "run_1"
+    assert graph["completeness"]["score"] == 0.2
+    assert len(graph["entities"]) == 1
+    assert graph["entities"][0]["kind"] == "business_object"
+
+
 def test_findings_update_posts_status():
     seen = {}
 

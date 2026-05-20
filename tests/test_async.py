@@ -268,3 +268,36 @@ async def test_async_sessions_from_claude_code_defaults():
     assert seen["body"]["source"] == "claude_code"
     assert seen["body"]["session_type"] == "coding"
     assert seen["body"]["title"] == "my run"
+
+
+@pytest.mark.asyncio
+async def test_async_runs_operational_graph_hits_expected_path():
+    seen: dict = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen["method"] = request.method
+        seen["path"] = request.url.path
+        return httpx.Response(
+            200,
+            json={
+                "run_id": "run_1",
+                "entities": [],
+                "edges": [],
+                "findings": [],
+                "completeness": {
+                    "business_object_linked": True,
+                    "policy_context_found": False,
+                    "owner_found": False,
+                    "approval_context_found": False,
+                    "downstream_state_change_found": False,
+                    "score": 0.2,
+                },
+            },
+        )
+
+    inv = _async_inv_with_handler(handler)
+    async with inv:
+        graph = await inv.runs.operational_graph("run_1")
+    assert seen["method"] == "GET"
+    assert seen["path"] == "/v1/runs/run_1/operational-graph"
+    assert graph["completeness"]["score"] == 0.2
