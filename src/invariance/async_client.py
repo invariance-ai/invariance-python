@@ -72,6 +72,7 @@ from ._types import (
     Narrative,
     Node,
     NodeList,
+    OperationalGraphResponse,
     Review,
     ReviewDecision,
     ReviewList,
@@ -510,6 +511,11 @@ class AsyncRunsResource:
     async def get(self, id: str) -> AsyncRun:
         res = await self._http.get(f"/v1/runs/{id}")
         return AsyncRun(self._http, res["run"], self._signing_key)
+
+    async def operational_graph(self, run_id: str) -> OperationalGraphResponse:
+        """Fetch the operational graph for a run — entities, edges, findings,
+        and a completeness score (MVP spec §4)."""
+        return await self._http.get(f"/v1/runs/{run_id}/operational-graph")
 
 
 class AsyncNodesResource:
