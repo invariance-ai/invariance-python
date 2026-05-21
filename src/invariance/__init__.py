@@ -35,6 +35,7 @@ from .workflows import WorkflowDefinitionsResource
 from .cortex import CortexJobsResource, CortexResource
 from .operational_context import OperationalContext, empty_operational_context
 from .captures import CapturesResource
+from .dna import DnaResource
 from .async_client import (
     AsyncAgentsResource,
     AsyncAskResource,
@@ -132,6 +133,7 @@ __all__ = [
     "AsyncOperatorsResource",
     "AsyncSessionsResource",
     "CapturesResource",
+    "DnaResource",
     "AsyncKbResource",
     "AsyncAskResource",
     "AsyncMemoryResource",
@@ -190,6 +192,7 @@ class Invariance:
         self.workflow_definitions = WorkflowDefinitionsResource(self._http)
         self.cortex = CortexResource(self._http)
         self.captures = CapturesResource(self._http)
+        self.dna = DnaResource(self._http)
 
     def close(self) -> None:
         self._http.close()
