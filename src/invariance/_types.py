@@ -350,6 +350,7 @@ class WorkflowEvent(TypedDict):
     payload: dict[str, Any]
     evidence_node_ids: list[str]
     evidence_refs: list[WorkflowEvidenceRef]
+    idempotency_key: str | None
     occurred_at: str
     created_at: str
 
