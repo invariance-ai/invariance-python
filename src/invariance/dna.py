@@ -49,6 +49,76 @@ class DnaResource:
             )
         )
 
+    def list_objects(
+        self,
+        *,
+        project_id: str | None = None,
+        kind: str | None = None,
+        q: str | None = None,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        """List DNA objects. Output: {data: [...], next_cursor}."""
+        return self._http.get(
+            with_query(
+                "/v1/dna/objects",
+                project_id=project_id,
+                kind=kind,
+                q=q,
+                cursor=cursor,
+                limit=limit,
+            )
+        )
+
+    def list_object_mentions(
+        self,
+        *,
+        project_id: str | None = None,
+        event_id: str | None = None,
+        chunk_id: str | None = None,
+        object_id: str | None = None,
+        mention_type: str | None = None,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        """List extracted object mentions. Output: {data: [...], next_cursor}."""
+        return self._http.get(
+            with_query(
+                "/v1/dna/object-mentions",
+                project_id=project_id,
+                event_id=event_id,
+                chunk_id=chunk_id,
+                object_id=object_id,
+                mention_type=mention_type,
+                cursor=cursor,
+                limit=limit,
+            )
+        )
+
+    def list_edges(
+        self,
+        *,
+        run_id: str | None = None,
+        kind: str | None = None,
+        entity_id: str | None = None,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        """List durable DNA edges (e.g. a run's operational graph).
+
+        Output: {data: [...], next_cursor}.
+        """
+        return self._http.get(
+            with_query(
+                "/v1/dna/edges",
+                run_id=run_id,
+                kind=kind,
+                entity_id=entity_id,
+                cursor=cursor,
+                limit=limit,
+            )
+        )
+
     def accept_edge_candidate(
         self, id: str, *, project_id: str | None = None
     ) -> dict[str, Any]:
