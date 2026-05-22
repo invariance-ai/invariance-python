@@ -235,22 +235,51 @@ def test_update_omits_unset_run_id():
     assert "run_id" not in seen["body"]
 
 
-# ── list_links ─────────────────────────────────────────────────────────────
+# ── evidence-graph links ─────────────────────────────────────────────────────
 
 
-def test_list_links_returns_run_id():
+def test_create_link_posts_to_links_endpoint():
+    seen = {}
+
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"session": _session(run_id="run_77")})
+        seen["method"] = request.method
+        seen["path"] = request.url.path
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(
+            201, json={"link": {"id": "link_1", "capture_id": "cap_1", "case_id": "case_1", "link_type": "evidence"}}
+        )
 
     inv = _inv_with_handler(handler)
-    result = inv.captures.list_links("cap_1")
-    assert result == {"run_id": "run_77"}
+    link = inv.captures.create_link("cap_1", case_id="case_1", link_type="evidence")
+    assert seen["method"] == "POST"
+    assert seen["path"] == "/v1/captures/cap_1/links"
+    assert seen["body"] == {"case_id": "case_1", "link_type": "evidence"}
+    assert link["id"] == "link_1"
 
 
-def test_list_links_returns_none_when_unlinked():
+def test_list_links_returns_graph_links():
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"session": _session(run_id=None)})
+        assert request.method == "GET"
+        assert request.url.path == "/v1/captures/cap_1/links"
+        return httpx.Response(
+            200, json={"links": [{"id": "link_1", "capture_id": "cap_1", "case_id": "case_1", "link_type": "evidence"}]}
+        )
 
     inv = _inv_with_handler(handler)
-    result = inv.captures.list_links("cap_1")
-    assert result == {"run_id": None}
+    links = inv.captures.list_links("cap_1")
+    assert isinstance(links, list)
+    assert links[0]["case_id"] == "case_1"
+
+
+def test_delete_link_deletes_by_id():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["method"] = request.method
+        seen["path"] = request.url.path
+        return httpx.Response(204)
+
+    inv = _inv_with_handler(handler)
+    inv.captures.delete_link("cap_1", "link_1")
+    assert seen["method"] == "DELETE"
+    assert seen["path"] == "/v1/captures/cap_1/links/link_1"
