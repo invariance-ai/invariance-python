@@ -19,11 +19,17 @@ from typing import Any, Callable, TypeVar
 import httpx
 
 from ._types import (
+    CORTEX_TERMINAL_STATUSES,
+    ComplexQueryResult,
     CortexJob,
     CortexJobKind,
     CortexJobResult,
+    CortexLaunchMode,
     CortexTargetType,
     CreateCortexJobResponse,
+    LaunchCortexJobResponse,
+    ListCortexJobRunsResponse,
+    RetryCortexJobResponse,
     Agent,
     AgentList,
     AskContentBlock,
@@ -972,6 +978,43 @@ class AsyncCortexJobsResource:
     def __init__(self, http: AsyncHttpClient) -> None:
         self._http = http
 
+    async def launch(
+        self,
+        *,
+        project_id: str,
+        job_kind: CortexJobKind,
+        target_type: CortexTargetType,
+        target_ref: str,
+        mode: CortexLaunchMode,
+        question: str | None = None,
+        criteria: dict[str, Any] | None = None,
+        input_refs: dict[str, Any] | None = None,
+        input_payload: dict[str, Any] | None = None,
+        options: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
+    ) -> LaunchCortexJobResponse:
+        """Launch a Cortex job through the governed launcher (sync/async)."""
+        payload: dict[str, Any] = {
+            "project_id": project_id,
+            "job_kind": job_kind,
+            "target_type": target_type,
+            "target_ref": target_ref,
+            "mode": mode,
+        }
+        if question is not None:
+            payload["question"] = question
+        if criteria is not None:
+            payload["criteria"] = criteria
+        if input_refs is not None:
+            payload["input_refs"] = input_refs
+        if input_payload is not None:
+            payload["input_payload"] = input_payload
+        if options is not None:
+            payload["options"] = options
+        if idempotency_key is not None:
+            payload["idempotency_key"] = idempotency_key
+        return await self._http.post("/v1/cortex/jobs/launch", json=payload)
+
     async def create(
         self,
         *,
@@ -985,6 +1028,11 @@ class AsyncCortexJobsResource:
         input_payload: dict[str, Any] | None = None,
         options: dict[str, Any] | None = None,
     ) -> CreateCortexJobResponse:
+        """Enqueue a Cortex job via the legacy endpoint.
+
+        .. deprecated::
+            Prefer :meth:`launch` (the governed launcher).
+        """
         payload: dict[str, Any] = {
             "project_id": project_id,
             "job_kind": job_kind,
@@ -1003,6 +1051,41 @@ class AsyncCortexJobsResource:
             payload["options"] = options
         return await self._http.post("/v1/cortex/jobs", json=payload)
 
+    async def list(
+        self,
+        *,
+        status: str | None = None,
+        kind: CortexJobKind | None = None,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        """List jobs, newest first. Output: ``{data, next_cursor}``."""
+        return await self._http.get(
+            with_query(
+                "/v1/cortex/jobs",
+                status=status,
+                kind=kind,
+                cursor=cursor,
+                limit=limit,
+            )
+        )
+
+    async def retry(self, job_id: str) -> RetryCortexJobResponse:
+        """Re-queue a failed/dead job for one more attempt."""
+        from urllib.parse import quote
+
+        return await self._http.post(
+            f"/v1/cortex/jobs/{quote(job_id, safe='')}/retry"
+        )
+
+    async def runs(self, job_id: str) -> ListCortexJobRunsResponse:
+        """List the attempt history (audit-trail runs) for a job."""
+        from urllib.parse import quote
+
+        return await self._http.get(
+            f"/v1/cortex/jobs/{quote(job_id, safe='')}/runs"
+        )
+
     async def get(self, job_id: str) -> CortexJob:
         from urllib.parse import quote
 
@@ -1018,10 +1101,97 @@ class AsyncCortexJobsResource:
             f"/v1/cortex/jobs/{quote(job_id, safe='')}/result"
         )
 
+    async def wait_for_result(
+        self,
+        job_id: str,
+        *,
+        interval: float = 2.0,
+        timeout: float = 120.0,
+    ) -> CortexJobResult:
+        """Poll :meth:`result` until terminal status; raise on timeout."""
+        import time as _time
+
+        deadline = _time.monotonic() + timeout
+        while True:
+            res = await self.result(job_id)
+            if res.get("status") in CORTEX_TERMINAL_STATUSES:
+                return res
+            if _time.monotonic() + interval >= deadline:
+                raise TimeoutError(
+                    f"Cortex job {job_id} did not finish within {timeout}s "
+                    f"(last status: {res.get('status')})"
+                )
+            await asyncio.sleep(interval)
+
 
 class AsyncCortexResource:
     def __init__(self, http: AsyncHttpClient) -> None:
         self.jobs = AsyncCortexJobsResource(http)
+
+    async def ask(
+        self,
+        question: str,
+        *,
+        project_id: str,
+        target_type: CortexTargetType = "project",
+        target_ref: str | None = None,
+        mode: CortexLaunchMode = "sync",
+        criteria: dict[str, Any] | None = None,
+        input_refs: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
+        poll_interval: float = 2.0,
+        timeout: float = 120.0,
+    ) -> ComplexQueryResult:
+        """Ask the read-only ``complex_query`` analyst; get a cited answer.
+
+        Launches a governed job and returns the parsed
+        :class:`ComplexQueryResult`. Raises if the job fails or returns a
+        non-``complex_query`` result. The analyst executes only when the
+        platform's ``CORTEX_TOOL_RUNTIME_ENABLED`` flag is on.
+        """
+        ref = target_ref
+        if ref is None and target_type == "project":
+            ref = project_id
+        if ref is None:
+            raise ValueError(
+                f"cortex.ask: target_ref is required for target_type '{target_type}'"
+            )
+
+        launched = await self.jobs.launch(
+            project_id=project_id,
+            job_kind="complex_query",
+            target_type=target_type,
+            target_ref=ref,
+            mode=mode,
+            question=question,
+            criteria=criteria,
+            input_refs=input_refs,
+            idempotency_key=idempotency_key,
+        )
+
+        status = launched.get("status")
+        result = launched.get("result")
+        error = launched.get("error")
+
+        if status not in CORTEX_TERMINAL_STATUSES:
+            polled = await self.jobs.wait_for_result(
+                launched["job_id"], interval=poll_interval, timeout=timeout
+            )
+            status = polled.get("status")
+            result = polled.get("result")
+            error = polled.get("error")
+
+        if status != "succeeded" or result is None:
+            suffix = f": {error}" if error else ""
+            raise RuntimeError(
+                f"cortex.ask: job {launched['job_id']} {status}{suffix}"
+            )
+        if result.get("kind") != "complex_query":
+            raise RuntimeError(
+                f"cortex.ask: expected complex_query result, "
+                f"got '{result.get('kind')}'"
+            )
+        return result  # type: ignore[return-value]
 
 
 class AsyncDnaResource:
