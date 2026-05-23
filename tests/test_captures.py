@@ -90,6 +90,18 @@ def test_create_includes_optional_fields_when_provided():
     assert seen["body"]["metadata"] == {"k": "v"}
 
 
+def test_create_forwards_tags():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"session": _session()})
+
+    inv = _inv_with_handler(handler)
+    inv.captures.create(source="claude-code", tags=["meeting", "q3"])
+    assert seen["body"]["tags"] == ["meeting", "q3"]
+
+
 # ── get ────────────────────────────────────────────────────────────────────
 
 
@@ -151,6 +163,18 @@ def test_list_forwards_filter_params():
     assert seen["params"]["project_id"] == "proj_1"
     assert seen["params"]["operator_id"] == "op_1"
     assert seen["params"]["source"] == "claude-code"
+
+
+def test_list_forwards_tags_filter():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["params"] = dict(request.url.params)
+        return httpx.Response(200, json={"data": [], "next_cursor": None})
+
+    inv = _inv_with_handler(handler)
+    inv.captures.list(tags="meeting,q3")
+    assert seen["params"]["tags"] == "meeting,q3"
 
 
 # ── link ───────────────────────────────────────────────────────────────────
@@ -233,6 +257,18 @@ def test_update_omits_unset_run_id():
     inv = _inv_with_handler(handler)
     inv.captures.update("cap_1", status="completed")
     assert "run_id" not in seen["body"]
+
+
+def test_update_forwards_tags():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"session": _session()})
+
+    inv = _inv_with_handler(handler)
+    inv.captures.update("cap_1", tags=["done"])
+    assert seen["body"]["tags"] == ["done"]
 
 
 # ── list_links ─────────────────────────────────────────────────────────────

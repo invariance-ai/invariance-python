@@ -76,6 +76,7 @@ class CasesResource:
         end_user_id: str | None = None,
         owner: str | None = None,
         custom_attrs: dict[str, Any] | None = None,
+        tags: list[str] | None = None,
         opened_at: str | None = None,
     ) -> dict[str, Any]:
         body: dict[str, Any] = {"workflow_key": workflow_key}
@@ -89,6 +90,8 @@ class CasesResource:
             body["owner"] = owner
         if custom_attrs is not None:
             body["custom_attrs"] = custom_attrs
+        if tags is not None:
+            body["tags"] = tags
         if opened_at is not None:
             body["opened_at"] = opened_at
         res = self._http.post("/v1/cases", json=body)
@@ -150,6 +153,7 @@ class CasesResource:
         workflow_key: str | None = None,
         status: CaseStatus | None = None,
         outcome: str | None = None,
+        tags: str | None = None,
         cursor: str | None = None,
         limit: int | None = None,
     ) -> dict[str, Any]:
@@ -161,6 +165,7 @@ class CasesResource:
                 workflow_key=workflow_key,
                 status=status,
                 outcome=outcome,
+                tags=tags,
                 cursor=cursor,
                 limit=limit,
             )
@@ -175,6 +180,7 @@ class CasesResource:
         outcome_value_usd: float | None = None,
         owner: str | None = None,
         custom_attrs: dict[str, Any] | None = None,
+        tags: list[str] | None = None,
         closed_at: str | None = None,
     ) -> dict[str, Any]:
         body: dict[str, Any] = {}
@@ -188,6 +194,8 @@ class CasesResource:
             body["owner"] = owner
         if custom_attrs is not None:
             body["custom_attrs"] = custom_attrs
+        if tags is not None:
+            body["tags"] = tags
         if closed_at is not None:
             body["closed_at"] = closed_at
         res = self._http.patch(f"/v1/cases/{id}", json=body)

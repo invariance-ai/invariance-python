@@ -27,6 +27,7 @@ class CapturesResource:
         client_version: str | None = None,
         run_id: str | None = None,
         metadata: dict[str, Any] | None = None,
+        tags: list[str] | None = None,
     ) -> dict[str, Any]:
         body: dict[str, Any] = {"source": source}
         if session_type is not None:
@@ -45,6 +46,8 @@ class CapturesResource:
             body["run_id"] = run_id
         if metadata is not None:
             body["metadata"] = metadata
+        if tags is not None:
+            body["tags"] = tags
         res = self._http.post("/v1/captures", json=body)
         return res["session"]
 
@@ -60,6 +63,7 @@ class CapturesResource:
         session_type: str | None = None,
         source: str | None = None,
         run_id: str | None = None,
+        tags: str | None = None,
         cursor: str | None = None,
         limit: int | None = None,
     ) -> dict[str, Any]:
@@ -71,6 +75,7 @@ class CapturesResource:
                 session_type=session_type,
                 source=source,
                 run_id=run_id,
+                tags=tags,
                 cursor=cursor,
                 limit=limit,
             )
@@ -83,6 +88,7 @@ class CapturesResource:
         run_id: object = _UNSET,
         status: str | None = None,
         agent_id: str | None = None,
+        tags: list[str] | None = None,
     ) -> dict[str, Any]:
         body: dict[str, Any] = {}
         if run_id is not _UNSET:
@@ -91,6 +97,8 @@ class CapturesResource:
             body["status"] = status
         if agent_id is not None:
             body["agent_id"] = agent_id
+        if tags is not None:
+            body["tags"] = tags
         res = self._http.patch(f"/v1/captures/{id}", json=body)
         return res["session"]
 
