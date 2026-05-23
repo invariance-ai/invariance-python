@@ -197,6 +197,41 @@ def test_link_patches_run_id():
     assert result["run_id"] == "run_99"
 
 
+def test_link_posts_polymorphic_target():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["method"] = request.method
+        seen["path"] = request.url.path
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(201, json={"link": {"id": "lnk_1", "case_id": "case_1"}})
+
+    inv = _inv_with_handler(handler)
+    result = inv.captures.link(
+        "cap_1", target_type="case", target_id="case_1", link_type="evidence"
+    )
+    assert seen["method"] == "POST"
+    assert seen["path"] == "/v1/captures/cap_1/links"
+    assert seen["body"] == {
+        "target_type": "case",
+        "target_id": "case_1",
+        "link_type": "evidence",
+    }
+    assert result["id"] == "lnk_1"
+
+
+def test_link_target_type_defaults_to_run():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(201, json={"link": {"id": "lnk_2", "run_id": "run_1"}})
+
+    inv = _inv_with_handler(handler)
+    inv.captures.link("cap_1", target_id="run_1")
+    assert seen["body"]["target_type"] == "run"
+
+
 # ── unlink ─────────────────────────────────────────────────────────────────
 
 
@@ -274,19 +309,24 @@ def test_update_forwards_tags():
 # ── list_links ─────────────────────────────────────────────────────────────
 
 
-def test_list_links_returns_run_id():
+def test_list_links_returns_links_and_run_id():
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"session": _session(run_id="run_77")})
+        assert request.url.path == "/v1/captures/cap_1/links"
+        return httpx.Response(
+            200,
+            json={"links": [{"id": "lnk_1", "run_id": "run_77", "case_id": None}]},
+        )
 
     inv = _inv_with_handler(handler)
     result = inv.captures.list_links("cap_1")
-    assert result == {"run_id": "run_77"}
+    assert result["run_id"] == "run_77"
+    assert result["links"][0]["id"] == "lnk_1"
 
 
 def test_list_links_returns_none_when_unlinked():
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"session": _session(run_id=None)})
+        return httpx.Response(200, json={"links": []})
 
     inv = _inv_with_handler(handler)
     result = inv.captures.list_links("cap_1")
-    assert result == {"run_id": None}
+    assert result == {"links": [], "run_id": None}

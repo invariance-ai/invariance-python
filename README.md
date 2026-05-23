@@ -169,6 +169,25 @@ print(reply["final_text"])  # cites [[wiki:auth-flow]] and [run:r_…]
 
 Same surface is available on `AsyncInvariance` via `await inv.kb.create_page(...)` and `await inv.ask.send(...)`.
 
+### Captures: linking evidence
+
+```python
+from invariance import Invariance
+
+inv = Invariance()  # uses INVARIANCE_API_KEY
+
+# Legacy run link (sets run_id, returns the capture):
+inv.captures.link("cap_123", run_id="run_abc")
+
+# Link to any evidence-graph target — target_type defaults to "run":
+link = inv.captures.link(
+    "cap_123", target_type="case", target_id="case_xyz", link_type="evidence"
+)
+
+links = inv.captures.list_links("cap_123")["links"]
+inv.captures.unlink("cap_123", link_id=link["id"])
+```
+
 ## Configuration
 
 Resolved in priority order:
