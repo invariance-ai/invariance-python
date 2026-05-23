@@ -1040,6 +1040,8 @@ CortexJobKind = Literal[
     "recommendation_impact_eval",
     "prompt_variant_eval",
     "policy_eval",
+    "divergence_error_tracking",
+    "complex_query",
 ]
 
 CortexTargetType = Literal[
@@ -1052,7 +1054,15 @@ CortexTargetType = Literal[
     "policy",
     "recommendation",
     "external",
+    "finding",
+    "review",
+    "eval_run",
+    "project",
 ]
+
+# How a launched job runs: ``sync`` blocks and returns the result; ``async``
+# enqueues.
+CortexLaunchMode = Literal["sync", "async"]
 
 CortexJobStatus = Literal[
     "queued",
@@ -1063,6 +1073,14 @@ CortexJobStatus = Literal[
     "dead",
     "cancelled",
 ]
+
+# Terminal lifecycle states — a job is done when it reaches one of these.
+CORTEX_TERMINAL_STATUSES: tuple[CortexJobStatus, ...] = (
+    "succeeded",
+    "failed",
+    "dead",
+    "cancelled",
+)
 
 
 class CortexJob(TypedDict, total=False):
@@ -1125,10 +1143,62 @@ class OutcomeAttributionResult(TypedDict, total=False):
     confidence: float
 
 
+class DivergenceTopError(TypedDict, total=False):
+    """One high-frequency error surfaced by a ``divergence_error_tracking`` job."""
+
+    run_id: str
+    kind: str
+    severity: str
+    status: str
+    title: str
+    summary: str
+    suggested_action: str | None
+
+
+class DivergenceErrorTrackingResult(TypedDict, total=False):
+    kind: Literal["divergence_error_tracking"]
+    target_type: CortexTargetType
+    target_ref: str
+    total_divergences: int
+    open_divergences: int
+    critical_open_divergences: int
+    by_kind: dict[str, int]
+    by_severity: dict[str, int]
+    by_status: dict[str, int]
+    affected_run_ids: list[str]
+    top_errors: list[DivergenceTopError]
+    recommended_actions: list[str]
+
+
+class ComplexQueryResult(TypedDict, total=False):
+    """Result of the read-only ``complex_query`` analyst.
+
+    Every id in ``evidence_refs`` and ``affected_entities`` was observed through
+    a governed read tool — the runtime fails closed against fabricated or
+    cross-project ids.
+
+    Defined locally pending an export from the shared api-types.
+    """
+
+    kind: Literal["complex_query"]
+    short_answer: str
+    reasoning_plan: list[str]
+    evidence_refs: list[str]
+    affected_entities: list[str]
+    confidence: float
+    restricted_evidence_count: int
+    recommended_action: str
+    follow_up_questions: list[str]
+
+
 # Discriminated by ``kind``. Stored as a generic dict on the response so
 # callers can branch without runtime parsing; static checkers see the union.
 CortexJobResultPayload = (
-    WorkflowEvalResult | CounterfactualEvalResult | OutcomeAttributionResult
+    WorkflowEvalResult
+    | CounterfactualEvalResult
+    | OutcomeAttributionResult
+    | DivergenceErrorTrackingResult
+    | ComplexQueryResult
 )
 
 
@@ -1137,3 +1207,48 @@ class CortexJobResult(TypedDict, total=False):
     status: CortexJobStatus
     result: CortexJobResultPayload
     error: str | None
+
+
+class LaunchCortexJobResponse(TypedDict, total=False):
+    """Response from ``POST /v1/cortex/jobs/launch``.
+
+    For ``sync`` launches the parsed ``result`` (or ``error``) is embedded once
+    the job ran; ``async`` launches return the queued job — poll
+    ``wait_for_result``.
+    """
+
+    job_id: str
+    status: CortexJobStatus
+    mode: CortexLaunchMode
+    deduplicated: bool
+    result: CortexJobResultPayload
+    error: str | None
+
+
+class RetryCortexJobResponse(TypedDict):
+    job_id: str
+    status: CortexJobStatus
+
+
+class CortexJobRun(TypedDict, total=False):
+    """One attempt at running a job (the ``cortex_job_runs`` audit-trail row)."""
+
+    id: str
+    job_id: str
+    project_id: str
+    job_kind: CortexJobKind
+    prompt_spec_id: str | None
+    prompt_key: str | None
+    prompt_version: int | None
+    model: str | None
+    status: Literal["running", "succeeded", "failed", "cancelled"]
+    output_refs: dict[str, Any]
+    metrics: dict[str, Any]
+    error: str | None
+    started_at: str
+    finished_at: str | None
+    latency_ms: int | None
+
+
+class ListCortexJobRunsResponse(TypedDict):
+    runs: list[CortexJobRun]

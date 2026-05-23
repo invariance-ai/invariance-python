@@ -96,11 +96,41 @@ except InvarianceApiError as err:
 
 ## Resources at a glance
 
-Sync (`inv.`): `runs`, `nodes`, `agents`, `monitors`, `signals`, `findings`, `reviews`, `narratives`, `node_types`, `kb`, `ask`, `memory`, `evals`, `proofs`, `recipes`, `guardrails`, `operators`, `sessions`.
+Sync (`inv.`): `runs`, `nodes`, `agents`, `monitors`, `signals`, `findings`, `reviews`, `narratives`, `node_types`, `kb`, `ask`, `memory`, `evals`, `proofs`, `recipes`, `guardrails`, `operators`, `sessions`, `cortex`, `dna`.
 
 `AsyncInvariance` exposes the same resources **except `recipes` and `guardrails`** — for those, use the sync client.
 
 `OperationalContext` is a value type exported from `invariance` (not an attribute on the client); construct it directly when you need one.
+
+## Ask Cortex (read-only analyst)
+
+`inv.cortex.ask(question, project_id=...)` runs the governed, read-only
+`complex_query` analyst and returns a **cited** answer — every id in
+`evidence_refs` / `affected_entities` was observed through a read tool (the
+runtime fails closed against fabricated or cross-project ids). Defaults to a
+synchronous, project-wide question:
+
+```python
+answer = inv.cortex.ask("Were refund SLAs met last week?", project_id="proj_123")
+print(answer["short_answer"], answer["evidence_refs"])
+```
+
+Anchor on a specific entity, or enqueue and poll instead of blocking:
+
+```python
+answer = inv.cortex.ask(
+    "Why did this run diverge?",
+    project_id="proj_123",
+    target_type="run",
+    target_ref="run_1",
+    mode="async",  # launch + poll; default is 'sync'
+)
+```
+
+Lower-level access lives on `inv.cortex.jobs`: `launch` (governed sync/async),
+`list`, `get`, `result`, `runs`, `retry`, and `wait_for_result`. The analyst
+only executes when the platform's `CORTEX_TOOL_RUNTIME_ENABLED` flag is on.
+`AsyncInvariance` mirrors the full surface (`await inv.cortex.ask(...)`).
 
 ## Multi-agent / handoff
 
