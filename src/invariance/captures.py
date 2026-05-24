@@ -102,14 +102,56 @@ class CapturesResource:
         res = self._http.patch(f"/v1/captures/{id}", json=body)
         return res["session"]
 
-    def link(self, id: str, *, run_id: str) -> dict[str, Any]:
+    def link(
+        self,
+        id: str,
+        *,
+        run_id: str | None = None,
+        target_type: str | None = None,
+        target_id: str | None = None,
+        link_type: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Link a capture to an evidence-graph target.
+
+        Two forms:
+        - ``run_id=...`` (legacy): sets the capture's run_id via PATCH and
+          returns the updated capture.
+        - ``target_id=...``: creates a capture link via POST
+          ``/v1/captures/:id/links`` and returns the created link. ``target_type``
+          defaults to ``"run"``, so passing only ``target_id`` links to a run.
+        """
+        if target_id is not None:
+            body: dict[str, Any] = {
+                "target_type": target_type or "run",
+                "target_id": target_id,
+            }
+            if link_type is not None:
+                body["link_type"] = link_type
+            if metadata is not None:
+                body["metadata"] = metadata
+            res = self._http.post(f"/v1/captures/{id}/links", json=body)
+            return res["link"]
+        if run_id is None:
+            raise ValueError("link() requires either run_id or target_id")
         res = self._http.patch(f"/v1/captures/{id}", json={"run_id": run_id})
         return res["session"]
 
-    def unlink(self, id: str) -> dict[str, Any]:
+    def unlink(self, id: str, *, link_id: str | None = None) -> dict[str, Any] | None:
+        """Detach a capture from a target.
+
+        With ``link_id`` deletes a specific evidence link; otherwise clears the
+        capture's run_id via PATCH (legacy) and returns the updated capture.
+        """
+        if link_id is not None:
+            self._http.delete(f"/v1/captures/{id}/links/{link_id}")
+            return None
         res = self._http.patch(f"/v1/captures/{id}", json={"run_id": None})
         return res["session"]
 
     def list_links(self, id: str) -> dict[str, Any]:
-        capture = self.get(id)
-        return {"run_id": capture.get("run_id")}
+        """List every evidence link on a capture (case/run/event/node)."""
+        res = self._http.get(f"/v1/captures/{id}/links")
+        links = res.get("links", [])
+        run_id = next((l["run_id"] for l in links if l.get("run_id")), None)
+        return {"links": links, "run_id": run_id}
