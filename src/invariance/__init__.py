@@ -25,11 +25,18 @@ from .kb import KbResource
 from .ask import AskResource
 from .memory import MemoryResource
 from .evals import EvalsResource
+from .operators import OperatorsResource
+from .recipes import RecipesResource
+from .guardrails import GuardrailsResource
+from .sessions import SessionsResource
+from .cases import CasesResource
+from .operational_context import OperationalContext, empty_operational_context
 from .async_client import (
     AsyncAgentsResource,
     AsyncAskResource,
     AsyncEvalsResource,
     AsyncFindingsResource,
+    AsyncGuardrailsResource,
     AsyncInvariance,
     AsyncKbResource,
     AsyncMemoryResource,
@@ -37,10 +44,13 @@ from .async_client import (
     AsyncNarrativesResource,
     AsyncNodesResource,
     AsyncNodeTypesResource,
+    AsyncOperatorsResource,
     AsyncProofsResource,
+    AsyncRecipesResource,
     AsyncReviewsResource,
     AsyncRun,
     AsyncRunsResource,
+    AsyncSessionsResource,
     AsyncSignalsResource,
     AsyncStep,
     async_trace,
@@ -104,10 +114,21 @@ __all__ = [
     "AskResource",
     "MemoryResource",
     "EvalsResource",
+    "OperatorsResource",
+    "RecipesResource",
+    "GuardrailsResource",
+    "SessionsResource",
+    "CasesResource",
+    "OperationalContext",
+    "empty_operational_context",
     "AsyncKbResource",
     "AsyncAskResource",
     "AsyncMemoryResource",
     "AsyncEvalsResource",
+    "AsyncOperatorsResource",
+    "AsyncRecipesResource",
+    "AsyncGuardrailsResource",
+    "AsyncSessionsResource",
     "generate_keypair",
     "get_public_key",
     "sign_ed25519",
@@ -151,6 +172,11 @@ class Invariance:
         self.ask = AskResource(self._http)
         self.memory = MemoryResource(self._http)
         self.evals = EvalsResource(self._http, self.runs)
+        self.operators = OperatorsResource(self._http)
+        self.recipes = RecipesResource(self._http)
+        self.guardrails = GuardrailsResource(self._http)
+        self.sessions = SessionsResource(self._http)
+        self.cases = CasesResource(self._http)
 
     def close(self) -> None:
         self._http.close()
