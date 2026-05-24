@@ -67,6 +67,14 @@ from .memory import (
     _build_read_body,
     _build_write_body,
 )
+from .evals import (
+    EvalCaseRecord,
+    EvalListResponse,
+    EvalResult,
+    EvalSummary,
+    derive_status as _eval_derive_status,
+    read_eval_metadata as _eval_read_metadata,
+)
 from .handoff_token import HandoffToken, build_handoff_token
 
 DEFAULT_API_URL = "https://api.useinvariance.com"
@@ -937,6 +945,113 @@ class AsyncAskResource:
         return await self._http.post("/v1/ask", json=payload)
 
 
+class AsyncEvalsResource:
+    def __init__(self, http: "AsyncHttpClient", runs: "AsyncRunsResource") -> None:
+        self._http = http
+        self._runs = runs
+        self._monitors = AsyncMonitorsResource(http)
+        self._findings = AsyncFindingsResource(http)
+
+    async def run_case(
+        self,
+        *,
+        suite: str,
+        case: str,
+        handler: Callable[["AsyncRun"], Any],
+        expected: Any = None,
+        inputs: Any = None,
+        tags: list[str] | None = None,
+        monitor_ids: list[str] | None = None,
+        name: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> "EvalResult":
+        eval_meta: dict[str, Any] = {"suite": suite, "case": case}
+        if expected is not None:
+            eval_meta["expected"] = expected
+        if inputs is not None:
+            eval_meta["inputs"] = inputs
+        if tags is not None:
+            eval_meta["tags"] = tags
+        md = {**(metadata or {}), "eval": eval_meta}
+        run_name = name if name is not None else f"eval:{suite}:{case}"
+
+        run = await self._runs.start(name=run_name, metadata=md)
+        run_id: str
+        async with run as r:
+            run_id = r.run_id
+            result = handler(r)
+            if inspect.isawaitable(result):
+                await result
+
+        if monitor_ids:
+            for mid in monitor_ids:
+                await self._monitors.evaluate(mid, run_id=run_id)
+
+        findings = await self._findings_for_run(run_id)
+        return {
+            "run_id": run_id,
+            "suite": suite,
+            "case": case,
+            "status": _eval_derive_status(findings),
+            "findings": findings,
+        }
+
+    async def list_cases(
+        self,
+        *,
+        suite: str,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> "EvalListResponse":
+        path = with_query(
+            "/v1/runs",
+            eval_suite=suite,
+            limit=limit,
+            cursor=cursor,
+        )
+        res = await self._http.get(path)
+        records: list[EvalCaseRecord] = []
+        for run in res.get("data", []):
+            meta = _eval_read_metadata(run.get("metadata"))
+            if meta is None:
+                continue
+            findings = await self._findings_for_run(run["id"])
+            records.append(
+                {
+                    "run_id": run["id"],
+                    "case": meta["case"],
+                    "status": _eval_derive_status(findings),
+                    "created_at": run["created_at"],
+                }
+            )
+        return {
+            "suite": suite,
+            "runs": records,
+            "next_cursor": res.get("next_cursor"),
+        }
+
+    async def summarize(self, suite: str) -> "EvalSummary":
+        cursor: str | None = None
+        passed = 0
+        failed = 0
+        for _ in range(20):
+            res = await self.list_cases(suite=suite, cursor=cursor, limit=100)
+            for r in res["runs"]:
+                if r["status"] == "pass":
+                    passed += 1
+                else:
+                    failed += 1
+            nc = res.get("next_cursor")
+            if not nc:
+                break
+            cursor = nc
+        return {"suite": suite, "total": passed + failed, "passed": passed, "failed": failed}
+
+    async def _findings_for_run(self, run_id: str) -> list[Finding]:
+        res = await self._http.get(with_query("/v1/findings", run_id=run_id, limit=100))
+        return list(res.get("data", []))
+
+
 class AsyncMemoryResource:
     def __init__(self, http: "AsyncHttpClient") -> None:
         self._http = http
@@ -1028,6 +1143,7 @@ class AsyncInvariance:
         self.kb = AsyncKbResource(self._http)
         self.ask = AsyncAskResource(self._http)
         self.memory = AsyncMemoryResource(self._http)
+        self.evals = AsyncEvalsResource(self._http, self.runs)
 
     async def aclose(self) -> None:
         await self._http.aclose()
