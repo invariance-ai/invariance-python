@@ -70,6 +70,7 @@ class EventsResource:
         evidence_node_ids: list[str] | None = None,
         evidence_refs: list[dict[str, Any]] | None = None,
         idempotency_key: str | None = None,
+        tags: list[str] | None = None,
         occurred_at: str | None = None,
     ) -> dict[str, Any]:
         body: dict[str, Any] = {"type": type}
@@ -85,6 +86,8 @@ class EventsResource:
             body["evidence_refs"] = evidence_refs
         if idempotency_key is not None:
             body["idempotency_key"] = idempotency_key
+        if tags is not None:
+            body["tags"] = tags
         if occurred_at is not None:
             body["occurred_at"] = occurred_at
         res = self._http.post(f"/v1/cases/{case_id}/events", json=body)
