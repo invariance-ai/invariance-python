@@ -3,6 +3,7 @@ import json
 import httpx
 
 from invariance import Invariance
+from invariance._types import WorkflowDefinition, WorkflowEvent
 
 
 def _inv_with_handler(handler):
@@ -14,6 +15,63 @@ def _inv_with_handler(handler):
         transport=transport,
     )
     return inv
+
+
+# Contract tripwires: keep the SDK TypedDicts in lockstep with the canonical
+# shapes in @invariance/api-types (the server's source of truth). If a field is
+# added or removed there without mirroring it here, these fail in CI.
+def test_workflow_event_fields_match_api_types():
+    assert set(WorkflowEvent.__annotations__) == {
+        "id",
+        "case_id",
+        "agent_id",
+        "tenant_id",
+        "end_user_id",
+        "type",
+        "actor_type",
+        "actor_id",
+        "payload",
+        "evidence_node_ids",
+        "evidence_refs",
+        "idempotency_key",
+        "tags",
+        "occurred_at",
+        "created_at",
+    }
+
+
+def test_workflow_definition_fields_match_api_types():
+    assert set(WorkflowDefinition.__annotations__) == {
+        "key",
+        "agent_id",
+        "display_name",
+        "description",
+        "expected_fields",
+        "expected_steps",
+        "allowed_outcomes",
+        "custom_metrics",
+        "stale_after_hours",
+        "spec_level",
+        "created_at",
+        "updated_at",
+    }
+
+
+def test_cases_create_event_passes_tags():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        seen["body"] = body
+        return httpx.Response(201, json={"event": {"id": "evt_1", **body}})
+
+    inv = _inv_with_handler(handler)
+    inv.cases.create_event(
+        "case_1",
+        type="support.escalated",
+        tags=["vip", "urgent"],
+    )
+    assert seen["body"]["tags"] == ["vip", "urgent"]
 
 
 def test_workflow_definitions_create_posts_typed_shape():

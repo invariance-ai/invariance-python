@@ -299,13 +299,14 @@ CaseStatus = Literal["open", "closed"]
 WorkflowEventActorType = Literal[
     "human", "agent", "llm", "service", "integration", "policy", "system"
 ]
-EvidenceRefKind = Literal[
+WorkflowEvidenceRefKind = Literal[
     "run", "node", "ticket", "doc", "slack", "github", "meeting", "url", "external"
 ]
 WorkflowFieldType = Literal[
     "string", "number", "boolean", "datetime", "url", "currency_usd", "enum"
 ]
 WorkflowOutcomeKind = Literal["success", "failure", "neutral"]
+WorkflowSpecLevel = Literal["minimal", "steps_only", "full"]
 
 
 class Case(TypedDict):
@@ -331,7 +332,7 @@ class CaseList(TypedDict):
 
 
 class WorkflowEvidenceRef(TypedDict, total=False):
-    kind: EvidenceRefKind
+    kind: WorkflowEvidenceRefKind
     id: str
     url: str
     label: str
@@ -351,6 +352,7 @@ class WorkflowEvent(TypedDict):
     evidence_node_ids: list[str]
     evidence_refs: list[WorkflowEvidenceRef]
     idempotency_key: str | None
+    tags: list[str] | None
     occurred_at: str
     created_at: str
 
@@ -398,6 +400,8 @@ class WorkflowDefinition(TypedDict):
     expected_steps: list[WorkflowDefinitionStep]
     allowed_outcomes: list[WorkflowDefinitionOutcome]
     custom_metrics: list[WorkflowMetricWidget]
+    stale_after_hours: int | None
+    spec_level: WorkflowSpecLevel | None
     created_at: str
     updated_at: str
 
@@ -525,11 +529,11 @@ MemoryDivergenceKind = Literal[
     "memory_not_updated_after_ground_truth_change",
 ]
 MemoryDivergenceStatus = Literal["open", "dismissed", "resolved"]
-EvidenceRefKind = Literal["node", "tool_call", "llm_call", "document", "system_record"]
+MemoryEvidenceRefKind = Literal["node", "tool_call", "llm_call", "document", "system_record"]
 
 
 class EvidenceRef(TypedDict, total=False):
-    kind: EvidenceRefKind
+    kind: MemoryEvidenceRefKind
     id: str
     uri: str
     excerpt: str
