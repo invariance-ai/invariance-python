@@ -1252,3 +1252,251 @@ class CortexJobRun(TypedDict, total=False):
 
 class ListCortexJobRunsResponse(TypedDict):
     runs: list[CortexJobRun]
+
+
+# ── Divergences ──────────────────────────────────────────────────────────────
+
+DivergenceKind = Literal[
+    "intent",
+    "policy",
+    "workflow",
+    "context",
+    "outcome",
+    "behavior_drift",
+    "memory_consistency",
+]
+DivergenceStatus = Literal[
+    "open", "accepted", "dismissed", "converted_to_monitor"
+]
+
+
+class Divergence(TypedDict):
+    id: str
+    agent_id: str
+    run_id: str
+    kind: DivergenceKind
+    severity: Severity
+    title: str
+    summary: str
+    expected: dict[str, Any]
+    observed: dict[str, Any]
+    evidence: dict[str, Any]
+    suggested_action: str | None
+    confidence: float
+    status: DivergenceStatus
+    created_at: str
+    updated_at: str
+
+
+class DivergenceList(TypedDict):
+    data: list[Divergence]
+    next_cursor: str | None
+
+
+# ── Saved views / queries ────────────────────────────────────────────────────
+
+QuerySource = Literal["executions", "events", "runs", "nodes", "captures"]
+QueryAggregation = Literal[
+    "count", "sum", "avg", "min", "max", "count_distinct"
+]
+QueryFilterOp = Literal["eq", "neq", "in", "gt", "gte", "lt", "lte"]
+DashboardViz = Literal["table", "metric", "bar", "line", "list"]
+SavedViewVisibility = Literal["agent", "private"]
+
+
+class QueryFilter(TypedDict, total=False):
+    field: str
+    op: QueryFilterOp
+    value: str | int | float | bool | list[Any] | None
+
+
+class QuerySpec(TypedDict, total=False):
+    fields: list[str]
+    filters: list[QueryFilter]
+    group_by: str
+    aggregation: QueryAggregation
+    aggregation_field: str
+    order_by: str
+    order_dir: Literal["asc", "desc"]
+    limit: int
+
+
+class SavedView(TypedDict):
+    id: str
+    agent_id: str
+    name: str
+    source: QuerySource
+    spec: QuerySpec
+    viz: DashboardViz
+    visibility: SavedViewVisibility
+    created_at: str
+    updated_at: str
+
+
+class SavedViewList(TypedDict):
+    data: list[SavedView]
+
+
+class QueryResultGroup(TypedDict):
+    key: str | int | float | None
+    value: float
+
+
+class QueryResult(TypedDict, total=False):
+    source: QuerySource
+    scalar: float
+    groups: list[QueryResultGroup]
+    rows: list[dict[str, Any]]
+    row_count: int
+    truncated: bool
+
+
+# ── External receipts ────────────────────────────────────────────────────────
+
+ExternalReceiptSource = Literal[
+    "stripe",
+    "zendesk",
+    "salesforce",
+    "hubspot",
+    "slack",
+    "linear",
+    "jira",
+    "webhook",
+    "jsonl",
+    "csv",
+    "custom",
+]
+
+
+class ExternalReceipt(TypedDict):
+    id: str
+    agent_id: str
+    run_id: str | None
+    node_id: str | None
+    source: ExternalReceiptSource
+    kind: str
+    external_id: str | None
+    occurred_at: str | None
+    business_object_type: str | None
+    business_object_id: str | None
+    subject_type: str | None
+    subject_id: str | None
+    correlation_keys: dict[str, str]
+    payload: dict[str, Any]
+    metadata: dict[str, Any]
+    hash: str
+    created_at: str
+    updated_at: str
+
+
+class ExternalReceiptList(TypedDict):
+    data: list[ExternalReceipt]
+    next_cursor: str | None
+
+
+# ── Metrics ──────────────────────────────────────────────────────────────────
+
+
+class OverviewMetricsTotals(TypedDict):
+    runs: int
+    input_tokens: int
+    output_tokens: int
+    cache_read_tokens: int
+    cost_usd: float
+    llm_calls: int
+    tool_calls: int
+    errors: int
+
+
+class OverviewMetricsSeriesPoint(TypedDict):
+    bucket: str
+    cost_usd: float
+    tokens: int
+    llm_calls: int
+
+
+class OverviewMetricsByPlatform(TypedDict):
+    platform: str
+    run_count: int
+    total_cost_usd: float
+
+
+class OverviewMetrics(TypedDict):
+    window_hours: int
+    totals: OverviewMetricsTotals
+    success_rate: float
+    avg_latency_ms: float
+    series: list[OverviewMetricsSeriesPoint]
+    by_platform: list[OverviewMetricsByPlatform]
+
+
+# Per-agent usage rows from /v1/metrics/agents — backend shape is loose, so
+# model as plain dicts to avoid drift when columns are added.
+AgentUsage = dict[str, Any]
+
+
+# ── Workflow observability ───────────────────────────────────────────────────
+
+WorkflowHealthStatus = Literal["healthy", "degraded", "stale", "failed"]
+
+
+class WorkflowObservabilityRollup(TypedDict):
+    workflow_key: str
+    execution_count: int
+    open_count: int
+    closed_count: int
+    stale_open_count: int
+    missing_outcome_count: int
+    failed_run_count: int
+    node_error_count: int
+    event_count: int
+    run_count: int
+    capture_count: int
+    node_count: int
+    executions_with_events: int
+    executions_with_runs: int
+    executions_with_captures: int
+    executions_with_nodes: int
+    total_cost_usd: float
+    total_input_tokens: int
+    total_output_tokens: int
+    avg_duration_ms: float | None
+    first_seen_at: str | None
+    last_seen_at: str | None
+
+
+class WorkflowObservabilityRollupList(TypedDict):
+    data: list[WorkflowObservabilityRollup]
+    next_cursor: None
+
+
+class WorkflowExecutionEvidenceMix(TypedDict):
+    events: bool
+    runs: bool
+    captures: bool
+    nodes: bool
+
+
+class WorkflowExecutionHealth(TypedDict):
+    case_id: str
+    workflow_key: str
+    status: CaseStatus
+    opened_at: str
+    closed_at: str | None
+    last_seen_at: str | None
+    stale: bool
+    health: WorkflowHealthStatus
+    reasons: list[str]
+    event_count: int
+    run_count: int
+    capture_count: int
+    node_count: int
+    error_count: int
+    total_cost_usd: float
+    total_tokens: int
+    evidence_mix: WorkflowExecutionEvidenceMix
+
+
+class WorkflowExecutionHealthList(TypedDict):
+    data: list[WorkflowExecutionHealth]
+    next_cursor: None

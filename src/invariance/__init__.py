@@ -36,29 +36,44 @@ from .cortex import CortexJobsResource, CortexResource
 from .operational_context import OperationalContext, empty_operational_context
 from .captures import CapturesResource
 from .dna import DnaResource
+from .divergences import DivergencesResource
+from .saved_views import SavedViewsResource
+from .receipts import ReceiptsResource
+from .workflow_observability import WorkflowObservabilityResource
+from .metrics import MetricsResource
 from .async_client import (
     AsyncAgentsResource,
     AsyncAskResource,
+    AsyncCapturesResource,
     AsyncCortexJobsResource,
     AsyncCortexResource,
+    AsyncDivergencesResource,
     AsyncDnaResource,
     AsyncEvalsResource,
+    AsyncEventsResource,
     AsyncFindingsResource,
+    AsyncGuardrailsResource,
     AsyncInvariance,
     AsyncKbResource,
     AsyncMemoryResource,
+    AsyncMetricsResource,
     AsyncMonitorsResource,
     AsyncNarrativesResource,
     AsyncNodesResource,
     AsyncNodeTypesResource,
     AsyncOperatorsResource,
     AsyncProofsResource,
+    AsyncReceiptsResource,
+    AsyncRecipesResource,
     AsyncReviewsResource,
     AsyncRun,
     AsyncRunsResource,
+    AsyncSavedViewsResource,
     AsyncSessionsResource,
     AsyncSignalsResource,
     AsyncStep,
+    AsyncWorkflowCasesResource,
+    AsyncWorkflowObservabilityResource,
     async_trace,
 )
 from .crypto import (
@@ -135,6 +150,21 @@ __all__ = [
     "AsyncSessionsResource",
     "CapturesResource",
     "DnaResource",
+    "DivergencesResource",
+    "SavedViewsResource",
+    "ReceiptsResource",
+    "WorkflowObservabilityResource",
+    "MetricsResource",
+    "AsyncDivergencesResource",
+    "AsyncSavedViewsResource",
+    "AsyncReceiptsResource",
+    "AsyncWorkflowObservabilityResource",
+    "AsyncMetricsResource",
+    "AsyncWorkflowCasesResource",
+    "AsyncEventsResource",
+    "AsyncCapturesResource",
+    "AsyncGuardrailsResource",
+    "AsyncRecipesResource",
     "AsyncKbResource",
     "AsyncAskResource",
     "AsyncMemoryResource",
@@ -195,6 +225,11 @@ class Invariance:
         self.cortex = CortexResource(self._http)
         self.captures = CapturesResource(self._http)
         self.dna = DnaResource(self._http)
+        self.divergences = DivergencesResource(self._http)
+        self.saved_views = SavedViewsResource(self._http)
+        self.receipts = ReceiptsResource(self._http)
+        self.workflow_observability = WorkflowObservabilityResource(self._http)
+        self.metrics = MetricsResource(self._http)
 
     def close(self) -> None:
         self._http.close()

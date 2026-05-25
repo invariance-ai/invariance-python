@@ -96,11 +96,42 @@ except InvarianceApiError as err:
 
 ## Resources at a glance
 
-Sync (`inv.`): `runs`, `nodes`, `agents`, `monitors`, `signals`, `findings`, `reviews`, `narratives`, `node_types`, `kb`, `ask`, `memory`, `evals`, `proofs`, `recipes`, `guardrails`, `operators`, `sessions`, `cortex`, `dna`.
+Sync (`inv.`): `runs`, `nodes`, `agents`, `monitors`, `signals`, `findings`, `reviews`, `narratives`, `node_types`, `kb`, `ask`, `memory`, `evals`, `proofs`, `recipes`, `guardrails`, `operators`, `sessions`, `cases`, `events`, `captures`, `cortex`, `dna`, `divergences`, `saved_views`, `receipts`, `workflow_observability`, `metrics`.
 
-`AsyncInvariance` exposes the same resources **except `recipes` and `guardrails`** — for those, use the sync client.
+`AsyncInvariance` exposes **every** resource above — call with `await` (e.g. `await inv.divergences.list(...)`). Sync/async parity is asserted in `tests/test_coverage.py` and tracked in [`../COVERAGE_MATRIX.md`](../COVERAGE_MATRIX.md).
 
 `OperationalContext` is a value type exported from `invariance` (not an attribute on the client); construct it directly when you need one.
+
+## Agent recipe: data plane (divergences, saved views, receipts, observability, metrics)
+
+```python
+# Triage divergences (expected-vs-observed gaps).
+for dv in inv.divergences.list(status="open", severity="high")["data"]:
+    inv.divergences.update(dv["id"], status="dismissed")
+
+# Persist + run a dashboard query. run() takes EXACTLY ONE of
+# saved_view_id OR (source, spec) — passing both/neither raises ValueError.
+view = inv.saved_views.create(
+    name="Failed runs", source="runs",
+    spec={"aggregation": "count", "filters": [{"field": "status", "op": "eq", "value": "failed"}]},
+)
+print(inv.saved_views.run(saved_view_id=view["id"])["scalar"])
+print(inv.saved_views.run(source="events", spec={"limit": 10})["row_count"])  # ad-hoc
+
+# Record proof of an external side effect. create / create_batch REQUIRE an
+# AGENT api key — they return 403 (InvarianceApiError, code 'forbidden') on
+# operator tokens. list / get accept agent OR operator keys.
+inv.receipts.create(source="stripe", kind="refund", run_id=run.run_id,
+                    correlation_keys={"refund_id": "re_1"})
+
+# Read-only health + usage.
+inv.workflow_observability.list()                 # rollups across workflows
+inv.workflow_observability.executions("mortgage.refi")  # per-case health
+inv.metrics.overview(window_hours=168)            # default window 24h, max 2160 (90d)
+inv.metrics.agents()
+```
+
+All of the above work identically on `AsyncInvariance` with `await`.
 
 ## Ask Cortex (read-only analyst)
 
