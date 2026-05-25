@@ -301,3 +301,103 @@ async def test_async_runs_operational_graph_hits_expected_path():
     assert seen["method"] == "GET"
     assert seen["path"] == "/v1/runs/run_1/operational-graph"
     assert graph["completeness"]["score"] == 0.2
+
+
+# ── Data-plane parity: new async resources ──────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_async_divergences_list_get_update():
+    calls: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content) if request.content else None
+        calls.append({"method": request.method, "path": request.url.path,
+                      "query": dict(request.url.params), "body": body})
+        if request.method == "PATCH":
+            return httpx.Response(200, json={"divergence": {"id": "dv_1", "status": "accepted"}})
+        if request.url.path == "/v1/divergences/dv_1":
+            return httpx.Response(200, json={"divergence": {"id": "dv_1"}})
+        return httpx.Response(200, json={"data": [], "next_cursor": None})
+
+    inv = _async_inv_with_handler(handler)
+    async with inv:
+        await inv.divergences.list(kind="policy", status="open")
+        got = await inv.divergences.get("dv_1")
+        upd = await inv.divergences.update("dv_1", status="accepted")
+    assert got == {"id": "dv_1"}
+    assert upd["status"] == "accepted"
+    assert calls[0]["query"] == {"kind": "policy", "status": "open"}
+    assert calls[2]["body"] == {"status": "accepted"}
+
+
+@pytest.mark.asyncio
+async def test_async_saved_views_run_and_validation():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"result": {"source": "runs", "row_count": 0}})
+
+    inv = _async_inv_with_handler(handler)
+    async with inv:
+        out = await inv.saved_views.run(saved_view_id="sv_1")
+        assert out["row_count"] == 0
+        with pytest.raises(ValueError):
+            await inv.saved_views.run()
+        with pytest.raises(ValueError):
+            await inv.saved_views.run(saved_view_id="sv_1", source="runs")
+
+
+@pytest.mark.asyncio
+async def test_async_receipts_create_and_batch():
+    calls: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content) if request.content else None
+        calls.append({"path": request.url.path, "body": body})
+        if request.url.path == "/v1/receipts/batch":
+            return httpx.Response(201, json={"receipts": [{"id": "r_1"}]})
+        return httpx.Response(201, json={"receipt": {"id": "r_1"}})
+
+    inv = _async_inv_with_handler(handler)
+    async with inv:
+        created = await inv.receipts.create(source="stripe", kind="refund")
+        batched = await inv.receipts.create_batch([{"source": "slack", "kind": "msg"}])
+    assert created == {"id": "r_1"}
+    assert batched == [{"id": "r_1"}]
+    assert calls[0]["body"] == {"source": "stripe", "kind": "refund"}
+    assert calls[1]["path"] == "/v1/receipts/batch"
+
+
+@pytest.mark.asyncio
+async def test_async_workflow_observability():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/executions"):
+            return httpx.Response(200, json={"data": [{"case_id": "c_1"}], "next_cursor": None})
+        if request.url.path == "/v1/workflow-observability/wf.a":
+            return httpx.Response(200, json={"rollup": {"workflow_key": "wf.a"}})
+        return httpx.Response(200, json={"data": [], "next_cursor": None})
+
+    inv = _async_inv_with_handler(handler)
+    async with inv:
+        assert (await inv.workflow_observability.list())["data"] == []
+        assert (await inv.workflow_observability.get("wf.a"))["workflow_key"] == "wf.a"
+        ex = await inv.workflow_observability.executions("wf.a")
+    assert ex["data"] == [{"case_id": "c_1"}]
+
+
+@pytest.mark.asyncio
+async def test_async_metrics_overview_and_agents():
+    calls: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append({"path": request.url.path, "query": dict(request.url.params)})
+        if request.url.path == "/v1/metrics/agents":
+            return httpx.Response(200, json={"usage": [{"agent_id": "a_1"}]})
+        return httpx.Response(200, json={"metrics": {"window_hours": 24}})
+
+    inv = _async_inv_with_handler(handler)
+    async with inv:
+        ov = await inv.metrics.overview(window_hours=48)
+        usage = await inv.metrics.agents()
+    assert ov == {"window_hours": 24}
+    assert usage == [{"agent_id": "a_1"}]
+    assert calls[0]["query"] == {"window_hours": "48"}

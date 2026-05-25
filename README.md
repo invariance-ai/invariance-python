@@ -149,6 +149,93 @@ The SDK is run-first:
 | `inv.ask` | Server-side agent loop with KB + run-context tools (`/v1/ask`). |
 | `inv.memory` | Record what the agent read or wrote about a subject — `read()` / `write()` against `/v1/memory/*`. |
 | `inv.evals` | Run a handler as a tracked eval case and derive pass/fail from findings — `run_case()` / `list_cases()` / `summarize()`. |
+| `inv.cases` | Workflow instances — `create` / `get` / `list` / `update` / `close` / `evidence` / events + `with_case(...)`. |
+| `inv.events` | Workflow events over case/run/node evidence — `list` / `list_for_case` / `create`. |
+| `inv.captures` | Agent session recordings + evidence links. |
+| `inv.guardrails` | Per-agent guardrail lifecycle — `list` / `get` / `create` / `update` / `promote`. |
+| `inv.recipes` | Read-only registry of built-in operational checks — `list` / `get` / `update`. |
+| `inv.divergences` | Detected expected-vs-observed gaps — `list` / `get` / `update`. |
+| `inv.saved_views` | Persisted dashboard queries (full CRUD + `run`). |
+| `inv.receipts` | External side-effect receipts — `create` / `create_batch` / `list` / `get`. |
+| `inv.workflow_observability` | Read-only workflow rollups + per-execution health. |
+| `inv.metrics` | Usage + cost rollups — `overview` / `agents`. |
+
+### Operations
+
+Every operation is available on **both** `Invariance` (sync) and `AsyncInvariance`
+(call with `await`). The two clients are kept in lockstep — see
+[`../COVERAGE_MATRIX.md`](../COVERAGE_MATRIX.md). Reads accept an agent **or**
+operator key; ops flagged **agent-key** return 403 on operator tokens.
+
+| Operation | HTTP | Path | Auth |
+| --- | --- | --- | --- |
+| `divergences.list(...)` | GET | `/v1/divergences` | agent/operator |
+| `divergences.get(id)` | GET | `/v1/divergences/:id` | agent/operator |
+| `divergences.update(id, status=...)` | PATCH | `/v1/divergences/:id` | agent/operator |
+| `saved_views.list()` | GET | `/v1/saved-views` | agent/operator |
+| `saved_views.create(...)` | POST | `/v1/saved-views` | agent/operator |
+| `saved_views.run(saved_view_id=... \| source=..., spec=...)` | POST | `/v1/saved-views/run` | agent/operator |
+| `saved_views.get(id)` | GET | `/v1/saved-views/:id` | agent/operator |
+| `saved_views.update(id, **patch)` | PATCH | `/v1/saved-views/:id` | agent/operator |
+| `saved_views.delete(id)` | DELETE | `/v1/saved-views/:id` | agent/operator |
+| `receipts.create(...)` | POST | `/v1/receipts` | **agent-key** |
+| `receipts.create_batch(receipts)` | POST | `/v1/receipts/batch` | **agent-key** |
+| `receipts.list(...)` | GET | `/v1/receipts` | agent/operator |
+| `receipts.get(id)` | GET | `/v1/receipts/:id` | agent/operator |
+| `workflow_observability.list()` | GET | `/v1/workflow-observability` | agent/operator |
+| `workflow_observability.get(key)` | GET | `/v1/workflow-observability/:key` | agent/operator |
+| `workflow_observability.executions(key)` | GET | `/v1/workflow-observability/:key/executions` | agent/operator |
+| `metrics.overview(window_hours=...)` | GET | `/v1/metrics/overview` | agent/operator |
+| `metrics.agents(window_hours=...)` | GET | `/v1/metrics/agents` | agent/operator |
+
+### Data plane: divergences, saved views, receipts, observability, metrics
+
+```python
+from invariance import Invariance
+
+inv = Invariance()  # uses INVARIANCE_API_KEY
+
+# Triage divergences.
+for dv in inv.divergences.list(status="open", severity="high")["data"]:
+    inv.divergences.update(dv["id"], status="converted_to_monitor")
+
+# Build + run a saved view (exactly one of saved_view_id OR source+spec).
+view = inv.saved_views.create(
+    name="Refund volume",
+    source="runs",
+    spec={"aggregation": "count", "filters": [{"field": "status", "op": "eq", "value": "failed"}]},
+    viz="metric",
+)
+result = inv.saved_views.run(saved_view_id=view["id"])
+print(result["scalar"])
+# Ad-hoc, no persistence:
+adhoc = inv.saved_views.run(source="events", spec={"limit": 20})
+
+# Record an external side effect (requires an AGENT api key — 403 on operator tokens).
+inv.receipts.create(
+    source="stripe", kind="refund", run_id="run_abc",
+    external_id="re_1", correlation_keys={"refund_id": "re_1"},
+    payload={"amount_cents": 500},
+)
+
+# Read-only observability + metrics.
+rollups = inv.workflow_observability.list()["data"]
+health = inv.workflow_observability.executions("mortgage.refi")["data"]
+overview = inv.metrics.overview(window_hours=168)
+usage = inv.metrics.agents()
+```
+
+The identical surface is on `AsyncInvariance`:
+
+```python
+from invariance import AsyncInvariance
+
+async with AsyncInvariance() as inv:
+    open_divs = await inv.divergences.list(status="open")
+    result = await inv.saved_views.run(source="runs", spec={"aggregation": "count"})
+    await inv.receipts.create_batch([{"source": "slack", "kind": "message"}])
+    overview = await inv.metrics.overview()
+```
 
 ### Intelligence: KB + Ask
 

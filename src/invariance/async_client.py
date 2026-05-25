@@ -14,7 +14,8 @@ import functools
 import inspect
 import traceback
 import uuid
-from typing import Any, Callable, TypeVar
+from contextlib import asynccontextmanager
+from typing import Any, AsyncIterator, Callable, TypeVar
 
 import httpx
 
@@ -38,6 +39,33 @@ from ._types import (
     BuiltinScorerList,
     CompareResponse,
     CreateAgentResponse,
+    AgentUsage,
+    DashboardViz,
+    Divergence,
+    DivergenceKind,
+    DivergenceList,
+    DivergenceStatus,
+    ExternalReceipt,
+    ExternalReceiptList,
+    ExternalReceiptSource,
+    Guardrail,
+    GuardrailList,
+    GuardrailMode,
+    GuardrailStatus,
+    OverviewMetrics,
+    QueryResult,
+    QuerySource,
+    QuerySpec,
+    Recipe,
+    RecipeList,
+    SavedView,
+    SavedViewList,
+    SavedViewVisibility,
+    WorkflowEventActorType,
+    WorkflowEventList,
+    WorkflowExecutionHealthList,
+    WorkflowObservabilityRollup,
+    WorkflowObservabilityRollupList,
     EvalCase,
     EvalCaseList,
     EvalCaseRecord,
@@ -90,6 +118,8 @@ from ._types import (
     Signal,
     SignalList,
 )
+from .cases import _CaseContext, _current_case
+from .receipts import _build_receipt_body
 from .evals import derive_status, read_eval_metadata
 from .memory import _build_read_body as _build_memory_read_body
 from .memory import _build_write_body as _build_memory_write_body
@@ -1885,6 +1915,670 @@ class AsyncSessionsResource:
         return await self.create(**kwargs)
 
 
+class AsyncWorkflowCasesResource:
+    """Async sibling of :class:`invariance.CasesResource` (workflow cases)."""
+
+    def __init__(self, http: AsyncHttpClient) -> None:
+        self._http = http
+
+    async def create(
+        self,
+        *,
+        workflow_key: str,
+        id: str | None = None,
+        tenant_id: str | None = None,
+        end_user_id: str | None = None,
+        owner: str | None = None,
+        custom_attrs: dict[str, Any] | None = None,
+        tags: list[str] | None = None,
+        opened_at: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"workflow_key": workflow_key}
+        for k, v in (
+            ("id", id),
+            ("tenant_id", tenant_id),
+            ("end_user_id", end_user_id),
+            ("owner", owner),
+            ("custom_attrs", custom_attrs),
+            ("tags", tags),
+            ("opened_at", opened_at),
+        ):
+            if v is not None:
+                body[k] = v
+        res = await self._http.post("/v1/cases", json=body)
+        return res["case"]
+
+    async def get(self, id: str) -> dict[str, Any]:
+        res = await self._http.get(f"/v1/cases/{id}")
+        return res["case"]
+
+    async def evidence(self, id: str) -> dict[str, Any]:
+        return await self._http.get(f"/v1/cases/{id}/evidence")
+
+    async def list_events(
+        self, id: str, *, cursor: str | None = None, limit: int | None = None
+    ) -> WorkflowEventList:
+        return await self._http.get(
+            with_query(f"/v1/cases/{id}/events", cursor=cursor, limit=limit)
+        )
+
+    async def create_event(
+        self,
+        id: str,
+        *,
+        type: str,
+        actor_type: WorkflowEventActorType | None = None,
+        actor_id: str | None = None,
+        payload: dict[str, Any] | None = None,
+        evidence_node_ids: list[str] | None = None,
+        evidence_refs: list[dict[str, Any]] | None = None,
+        occurred_at: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"type": type}
+        for k, v in (
+            ("actor_type", actor_type),
+            ("actor_id", actor_id),
+            ("payload", payload),
+            ("evidence_node_ids", evidence_node_ids),
+            ("evidence_refs", evidence_refs),
+            ("occurred_at", occurred_at),
+        ):
+            if v is not None:
+                body[k] = v
+        res = await self._http.post(f"/v1/cases/{id}/events", json=body)
+        return res["event"]
+
+    async def list(
+        self,
+        *,
+        tenant_id: str | None = None,
+        end_user_id: str | None = None,
+        workflow_key: str | None = None,
+        status: str | None = None,
+        outcome: str | None = None,
+        tags: str | None = None,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        return await self._http.get(
+            with_query(
+                "/v1/cases",
+                tenant_id=tenant_id,
+                end_user_id=end_user_id,
+                workflow_key=workflow_key,
+                status=status,
+                outcome=outcome,
+                tags=tags,
+                cursor=cursor,
+                limit=limit,
+            )
+        )
+
+    async def update(
+        self,
+        id: str,
+        *,
+        status: str | None = None,
+        outcome: str | None = None,
+        outcome_value_usd: float | None = None,
+        owner: str | None = None,
+        custom_attrs: dict[str, Any] | None = None,
+        tags: list[str] | None = None,
+        closed_at: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {}
+        for k, v in (
+            ("status", status),
+            ("outcome", outcome),
+            ("outcome_value_usd", outcome_value_usd),
+            ("owner", owner),
+            ("custom_attrs", custom_attrs),
+            ("tags", tags),
+            ("closed_at", closed_at),
+        ):
+            if v is not None:
+                body[k] = v
+        res = await self._http.patch(f"/v1/cases/{id}", json=body)
+        return res["case"]
+
+    async def close(
+        self,
+        id: str,
+        *,
+        outcome: str,
+        value_usd: float | None = None,
+        closed_at: str | None = None,
+    ) -> dict[str, Any]:
+        return await self.update(
+            id,
+            status="closed",
+            outcome=outcome,
+            outcome_value_usd=value_usd,
+            closed_at=closed_at,
+        )
+
+    @asynccontextmanager
+    async def with_case(
+        self, case_or_id: dict[str, Any] | str
+    ) -> AsyncIterator[None]:
+        if isinstance(case_or_id, str):
+            c = await self.get(case_or_id)
+        else:
+            c = case_or_id
+        ctx = _CaseContext(
+            case_id=c["id"],
+            tenant_id=c.get("tenant_id"),
+            end_user_id=c.get("end_user_id"),
+        )
+        token = _current_case.set(ctx)
+        try:
+            yield
+        finally:
+            _current_case.reset(token)
+
+
+class AsyncEventsResource:
+    """Async sibling of :class:`invariance.EventsResource`."""
+
+    def __init__(self, http: AsyncHttpClient) -> None:
+        self._http = http
+
+    async def list(
+        self,
+        *,
+        case_id: str | None = None,
+        tenant_id: str | None = None,
+        end_user_id: str | None = None,
+        workflow_key: str | None = None,
+        type: str | None = None,
+        actor_type: WorkflowEventActorType | None = None,
+        actor_id: str | None = None,
+        from_: str | None = None,
+        to: str | None = None,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> WorkflowEventList:
+        return await self._http.get(
+            with_query(
+                "/v1/events",
+                case_id=case_id,
+                tenant_id=tenant_id,
+                end_user_id=end_user_id,
+                workflow_key=workflow_key,
+                type=type,
+                actor_type=actor_type,
+                actor_id=actor_id,
+                **{"from": from_},
+                to=to,
+                cursor=cursor,
+                limit=limit,
+            )
+        )
+
+    async def list_for_case(
+        self, case_id: str, *, cursor: str | None = None, limit: int | None = None
+    ) -> WorkflowEventList:
+        return await self._http.get(
+            with_query(f"/v1/cases/{case_id}/events", cursor=cursor, limit=limit)
+        )
+
+    async def create(
+        self,
+        case_id: str,
+        *,
+        type: str,
+        actor_type: WorkflowEventActorType | None = None,
+        actor_id: str | None = None,
+        payload: dict[str, Any] | None = None,
+        evidence_node_ids: list[str] | None = None,
+        evidence_refs: list[dict[str, Any]] | None = None,
+        idempotency_key: str | None = None,
+        occurred_at: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"type": type}
+        for k, v in (
+            ("actor_type", actor_type),
+            ("actor_id", actor_id),
+            ("payload", payload),
+            ("evidence_node_ids", evidence_node_ids),
+            ("evidence_refs", evidence_refs),
+            ("idempotency_key", idempotency_key),
+            ("occurred_at", occurred_at),
+        ):
+            if v is not None:
+                body[k] = v
+        res = await self._http.post(f"/v1/cases/{case_id}/events", json=body)
+        return res["event"]
+
+
+class AsyncCapturesResource:
+    """Async sibling of :class:`invariance.CapturesResource`."""
+
+    def __init__(self, http: AsyncHttpClient) -> None:
+        self._http = http
+
+    async def create(
+        self,
+        *,
+        source: str,
+        session_type: str | None = None,
+        title: str | None = None,
+        external_session_id: str | None = None,
+        model: str | None = None,
+        cwd: str | None = None,
+        client_version: str | None = None,
+        run_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        tags: list[str] | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"source": source}
+        for k, v in (
+            ("session_type", session_type),
+            ("title", title),
+            ("external_session_id", external_session_id),
+            ("model", model),
+            ("cwd", cwd),
+            ("client_version", client_version),
+            ("run_id", run_id),
+            ("metadata", metadata),
+            ("tags", tags),
+        ):
+            if v is not None:
+                body[k] = v
+        res = await self._http.post("/v1/captures", json=body)
+        return res["session"]
+
+    async def get(self, id: str) -> dict[str, Any]:
+        res = await self._http.get(f"/v1/captures/{id}")
+        return res["session"]
+
+    async def list(
+        self,
+        *,
+        project_id: str | None = None,
+        operator_id: str | None = None,
+        session_type: str | None = None,
+        source: str | None = None,
+        run_id: str | None = None,
+        tags: str | None = None,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        return await self._http.get(
+            with_query(
+                "/v1/captures",
+                project_id=project_id,
+                operator_id=operator_id,
+                session_type=session_type,
+                source=source,
+                run_id=run_id,
+                tags=tags,
+                cursor=cursor,
+                limit=limit,
+            )
+        )
+
+    async def list_links(self, id: str) -> dict[str, Any]:
+        res = await self._http.get(f"/v1/captures/{id}/links")
+        links = res.get("links", [])
+        run_id = next((l["run_id"] for l in links if l.get("run_id")), None)
+        return {"links": links, "run_id": run_id}
+
+
+class AsyncGuardrailsResource:
+    """Async sibling of :class:`invariance.GuardrailsResource`."""
+
+    def __init__(self, http: AsyncHttpClient) -> None:
+        self._http = http
+
+    async def list(
+        self,
+        *,
+        cursor: str | None = None,
+        limit: int | None = None,
+        status: GuardrailStatus | None = None,
+        recipe_id: str | None = None,
+    ) -> GuardrailList:
+        return await self._http.get(
+            with_query(
+                "/v1/guardrails",
+                cursor=cursor,
+                limit=limit,
+                status=status,
+                recipe_id=recipe_id,
+            )
+        )
+
+    async def get(self, id: str) -> Guardrail:
+        res = await self._http.get(f"/v1/guardrails/{id}")
+        return res["guardrail"]
+
+    async def create(
+        self,
+        *,
+        title: str,
+        recipe_id: str | None = None,
+        finding_id: str | None = None,
+        rule: str | None = None,
+        mode: GuardrailMode | None = None,
+        status: GuardrailStatus | None = None,
+        agent_id: str | None = None,
+    ) -> Guardrail:
+        body: dict[str, Any] = {"title": title}
+        for k, v in (
+            ("recipe_id", recipe_id),
+            ("finding_id", finding_id),
+            ("rule", rule),
+            ("mode", mode),
+            ("status", status),
+            ("agent_id", agent_id),
+        ):
+            if v is not None:
+                body[k] = v
+        res = await self._http.post("/v1/guardrails", json=body)
+        return res["guardrail"]
+
+    async def update(
+        self,
+        id: str,
+        *,
+        mode: GuardrailMode | None = None,
+        status: GuardrailStatus | None = None,
+        monitor_id: str | None = None,
+    ) -> Guardrail:
+        body: dict[str, Any] = {}
+        for k, v in (("mode", mode), ("status", status), ("monitor_id", monitor_id)):
+            if v is not None:
+                body[k] = v
+        res = await self._http.patch(f"/v1/guardrails/{id}", json=body)
+        return res["guardrail"]
+
+    async def promote(self, id: str, *, to: GuardrailStatus) -> Guardrail:
+        res = await self._http.post(f"/v1/guardrails/{id}/promote", json={"to": to})
+        return res["guardrail"]
+
+
+class AsyncRecipesResource:
+    """Async sibling of :class:`invariance.RecipesResource`."""
+
+    def __init__(self, http: AsyncHttpClient) -> None:
+        self._http = http
+
+    async def list(
+        self, *, cursor: str | None = None, limit: int | None = None
+    ) -> RecipeList:
+        return await self._http.get(
+            with_query("/v1/recipes", cursor=cursor, limit=limit)
+        )
+
+    async def get(self, id_or_slug: str) -> Recipe:
+        res = await self._http.get(f"/v1/recipes/{id_or_slug}")
+        return res["recipe"]
+
+    async def update(
+        self,
+        id: str,
+        *,
+        enabled: bool | None = None,
+        default_mode: GuardrailMode | None = None,
+    ) -> Recipe:
+        body: dict[str, Any] = {}
+        if enabled is not None:
+            body["enabled"] = enabled
+        if default_mode is not None:
+            body["default_mode"] = default_mode
+        res = await self._http.patch(f"/v1/recipes/{id}", json=body)
+        return res["recipe"]
+
+
+class AsyncDivergencesResource:
+    """Async sibling of :class:`invariance.DivergencesResource`."""
+
+    def __init__(self, http: AsyncHttpClient) -> None:
+        self._http = http
+
+    async def list(
+        self,
+        *,
+        run_id: str | None = None,
+        kind: DivergenceKind | None = None,
+        severity: Severity | None = None,
+        status: DivergenceStatus | None = None,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> DivergenceList:
+        return await self._http.get(
+            with_query(
+                "/v1/divergences",
+                run_id=run_id,
+                kind=kind,
+                severity=severity,
+                status=status,
+                cursor=cursor,
+                limit=limit,
+            )
+        )
+
+    async def get(self, id: str) -> Divergence:
+        res = await self._http.get(f"/v1/divergences/{id}")
+        return res["divergence"]
+
+    async def update(self, id: str, *, status: DivergenceStatus) -> Divergence:
+        res = await self._http.patch(
+            f"/v1/divergences/{id}", json={"status": status}
+        )
+        return res["divergence"]
+
+
+class AsyncSavedViewsResource:
+    """Async sibling of :class:`invariance.SavedViewsResource`."""
+
+    def __init__(self, http: AsyncHttpClient) -> None:
+        self._http = http
+
+    async def list(self) -> SavedViewList:
+        return await self._http.get("/v1/saved-views")
+
+    async def create(
+        self,
+        *,
+        name: str,
+        source: QuerySource,
+        spec: QuerySpec,
+        viz: DashboardViz | None = None,
+        visibility: SavedViewVisibility | None = None,
+    ) -> SavedView:
+        body: dict[str, Any] = {"name": name, "source": source, "spec": spec}
+        if viz is not None:
+            body["viz"] = viz
+        if visibility is not None:
+            body["visibility"] = visibility
+        res = await self._http.post("/v1/saved-views", json=body)
+        return res["view"]
+
+    async def get(self, id: str) -> SavedView:
+        res = await self._http.get(f"/v1/saved-views/{id}")
+        return res["view"]
+
+    async def update(
+        self,
+        id: str,
+        *,
+        name: str | None = None,
+        source: QuerySource | None = None,
+        spec: QuerySpec | None = None,
+        viz: DashboardViz | None = None,
+        visibility: SavedViewVisibility | None = None,
+    ) -> SavedView:
+        body: dict[str, Any] = {}
+        for k, v in (
+            ("name", name),
+            ("source", source),
+            ("spec", spec),
+            ("viz", viz),
+            ("visibility", visibility),
+        ):
+            if v is not None:
+                body[k] = v
+        res = await self._http.patch(f"/v1/saved-views/{id}", json=body)
+        return res["view"]
+
+    async def delete(self, id: str) -> None:
+        await self._http.delete(f"/v1/saved-views/{id}")
+
+    async def run(
+        self,
+        *,
+        saved_view_id: str | None = None,
+        source: QuerySource | None = None,
+        spec: QuerySpec | None = None,
+    ) -> QueryResult:
+        if saved_view_id is not None and source is not None:
+            raise ValueError(
+                "run() takes exactly one of saved_view_id or source, not both"
+            )
+        if saved_view_id is None and source is None:
+            raise ValueError("run() requires either saved_view_id or source")
+        if saved_view_id is not None:
+            body: dict[str, Any] = {"saved_view_id": saved_view_id}
+        else:
+            body = {"source": source}
+            if spec is not None:
+                body["spec"] = spec
+        res = await self._http.post("/v1/saved-views/run", json=body)
+        return res["result"]
+
+
+class AsyncReceiptsResource:
+    """Async sibling of :class:`invariance.ReceiptsResource`.
+
+    ``create`` / ``create_batch`` require an agent API key (403 on operator
+    tokens). ``list`` / ``get`` accept an agent or operator key.
+    """
+
+    def __init__(self, http: AsyncHttpClient) -> None:
+        self._http = http
+
+    async def create(
+        self,
+        *,
+        source: ExternalReceiptSource,
+        kind: str,
+        run_id: str | None = None,
+        node_id: str | None = None,
+        external_id: str | None = None,
+        occurred_at: str | None = None,
+        business_object_type: str | None = None,
+        business_object_id: str | None = None,
+        subject_type: str | None = None,
+        subject_id: str | None = None,
+        correlation_keys: dict[str, str] | None = None,
+        payload: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> ExternalReceipt:
+        body = _build_receipt_body(
+            source=source,
+            kind=kind,
+            run_id=run_id,
+            node_id=node_id,
+            external_id=external_id,
+            occurred_at=occurred_at,
+            business_object_type=business_object_type,
+            business_object_id=business_object_id,
+            subject_type=subject_type,
+            subject_id=subject_id,
+            correlation_keys=correlation_keys,
+            payload=payload,
+            metadata=metadata,
+        )
+        res = await self._http.post("/v1/receipts", json=body)
+        return res["receipt"]
+
+    async def create_batch(
+        self, receipts: list[dict[str, Any]]
+    ) -> list[ExternalReceipt]:
+        res = await self._http.post(
+            "/v1/receipts/batch", json={"receipts": receipts}
+        )
+        return res["receipts"]
+
+    async def list(
+        self,
+        *,
+        run_id: str | None = None,
+        node_id: str | None = None,
+        source: ExternalReceiptSource | None = None,
+        kind: str | None = None,
+        external_id: str | None = None,
+        business_object_type: str | None = None,
+        business_object_id: str | None = None,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> ExternalReceiptList:
+        return await self._http.get(
+            with_query(
+                "/v1/receipts",
+                run_id=run_id,
+                node_id=node_id,
+                source=source,
+                kind=kind,
+                external_id=external_id,
+                business_object_type=business_object_type,
+                business_object_id=business_object_id,
+                cursor=cursor,
+                limit=limit,
+            )
+        )
+
+    async def get(self, id: str) -> ExternalReceipt:
+        res = await self._http.get(f"/v1/receipts/{id}")
+        return res["receipt"]
+
+
+class AsyncWorkflowObservabilityResource:
+    """Async sibling of :class:`invariance.WorkflowObservabilityResource`."""
+
+    def __init__(self, http: AsyncHttpClient) -> None:
+        self._http = http
+
+    async def list(self) -> WorkflowObservabilityRollupList:
+        return await self._http.get("/v1/workflow-observability")
+
+    async def get(self, workflow_key: str) -> WorkflowObservabilityRollup:
+        res = await self._http.get(f"/v1/workflow-observability/{workflow_key}")
+        return res["rollup"]
+
+    async def executions(
+        self, workflow_key: str
+    ) -> WorkflowExecutionHealthList:
+        return await self._http.get(
+            f"/v1/workflow-observability/{workflow_key}/executions"
+        )
+
+
+class AsyncMetricsResource:
+    """Async sibling of :class:`invariance.MetricsResource`."""
+
+    def __init__(self, http: AsyncHttpClient) -> None:
+        self._http = http
+
+    async def overview(
+        self, *, window_hours: int | None = None
+    ) -> OverviewMetrics:
+        res = await self._http.get(
+            with_query("/v1/metrics/overview", window_hours=window_hours)
+        )
+        return res["metrics"]
+
+    async def agents(
+        self, *, window_hours: int | None = None
+    ) -> list[AgentUsage]:
+        res = await self._http.get(
+            with_query("/v1/metrics/agents", window_hours=window_hours)
+        )
+        return res["usage"]
+
+
 class AsyncInvariance:
     def __init__(
         self,
@@ -1926,6 +2620,16 @@ class AsyncInvariance:
         self.sessions = AsyncSessionsResource(self._http)
         self.cortex = AsyncCortexResource(self._http)
         self.dna = AsyncDnaResource(self._http)
+        self.cases = AsyncWorkflowCasesResource(self._http)
+        self.events = AsyncEventsResource(self._http)
+        self.captures = AsyncCapturesResource(self._http)
+        self.guardrails = AsyncGuardrailsResource(self._http)
+        self.recipes = AsyncRecipesResource(self._http)
+        self.divergences = AsyncDivergencesResource(self._http)
+        self.saved_views = AsyncSavedViewsResource(self._http)
+        self.receipts = AsyncReceiptsResource(self._http)
+        self.workflow_observability = AsyncWorkflowObservabilityResource(self._http)
+        self.metrics = AsyncMetricsResource(self._http)
 
     async def aclose(self) -> None:
         await self._http.aclose()
