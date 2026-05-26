@@ -1,0 +1,29 @@
+{
+  "_comment": "Cross-SDK proof parity golden (XR-002). This file is committed byte-identical in invariance-typescript (src/resources/fixtures/) and invariance-python (tests/fixtures/). Each SDK's parity test re-derives canonical/hash/signature from `payload` using a known test key and asserts the result equals the pinned values below, then asserts the signature verifies. Ed25519 (RFC 8032) is deterministic, so a given key+message yields one signature across @noble/ed25519 (TS) and PyNaCl (Python). Drift between the two copies means signatures issued by one SDK won't verify under the other.",
+  "algo": {
+    "canonical": "JSON with recursively lexicographically-sorted keys, compact (no whitespace), arrays preserve order, null kept, undefined/None omitted",
+    "hash": "sha256(utf8(canonical)) as lowercase hex",
+    "signature": "ed25519 over the 32 raw bytes of the hash digest; keys and signature are lowercase hex",
+    "key_format": "32-byte raw keys as 64-char lowercase hex; signature is 64 bytes as 128-char lowercase hex"
+  },
+  "payload": {
+    "id": "node_0000000000000001",
+    "run_id": "run_test",
+    "agent_id": "agent_test",
+    "parent_id": null,
+    "action_type": "tool_call",
+    "input": { "query": "refund" },
+    "output": { "answer": "ok" },
+    "error": null,
+    "metadata": { "k": "v" },
+    "custom_fields": { "trace": "abc" },
+    "timestamp": 1775900000000,
+    "duration_ms": 25,
+    "previous_hashes": ["aa", "bb"]
+  },
+  "canonical": "{\"action_type\":\"tool_call\",\"agent_id\":\"agent_test\",\"custom_fields\":{\"trace\":\"abc\"},\"duration_ms\":25,\"error\":null,\"id\":\"node_0000000000000001\",\"input\":{\"query\":\"refund\"},\"metadata\":{\"k\":\"v\"},\"output\":{\"answer\":\"ok\"},\"parent_id\":null,\"previous_hashes\":[\"aa\",\"bb\"],\"run_id\":\"run_test\",\"timestamp\":1775900000000}",
+  "hash": "8d9d5be0c9b7113508a613049362530dbbd9779f33b6ac2f32069b15853a93b1",
+  "signing_key_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+  "public_key_hex": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c",
+  "signature_hex": "1e18881b82eb5a9f98266d2f243e35735f88553f1a61940ca79beb6b59df05d16e8793567c539ad9c2e2c879a86ed7d797527a9000ea6f56e827c7bca32af308"
+}
