@@ -112,6 +112,7 @@ from ._types import (
     ReviewList,
     ReviewResponse,
     RunList,
+    RunInspection,
     RunProof,
     ScorerSpec,
     Severity,
@@ -130,6 +131,7 @@ from .monitors import MonitorSpec, compile_monitor
 from ._internal import build_node_body, now_ms as _now_ms, random_node_id as _random_node_id
 from ._query import with_query
 from .handoff_token import HandoffToken, build_handoff_token
+from .observability import summarize_run_observability
 
 DEFAULT_API_URL = "https://api.useinvariance.com"
 BATCH_MAX = 100
@@ -547,6 +549,32 @@ class AsyncRunsResource:
     async def get(self, id: str) -> AsyncRun:
         res = await self._http.get(f"/v1/runs/{id}")
         return AsyncRun(self._http, res["run"], self._signing_key)
+
+    async def inspect(
+        self,
+        run_id: str,
+        *,
+        limit: int = 200,
+        include_operational_graph: bool = True,
+    ) -> RunInspection:
+        """Fetch an agent-readable inspection bundle for a run."""
+        run_res, nodes_page = await asyncio.gather(
+            self._http.get(f"/v1/runs/{run_id}"),
+            self._http.get(with_query(f"/v1/runs/{run_id}/nodes", limit=limit)),
+        )
+        graph = None
+        if include_operational_graph:
+            try:
+                graph = await self.operational_graph(run_id)
+            except Exception:
+                graph = None
+        nodes = nodes_page.get("data", [])
+        return {
+            "run": run_res["run"],
+            "nodes": nodes,
+            "observability": summarize_run_observability(run_id, nodes),
+            "operational_graph": graph,
+        }
 
     async def operational_graph(self, run_id: str) -> OperationalGraphResponse:
         """Fetch the operational graph for a run — entities, edges, findings,

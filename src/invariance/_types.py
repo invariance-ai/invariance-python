@@ -262,6 +262,46 @@ class NodeList(TypedDict):
     next_cursor: str | None
 
 
+StepKind = Literal["llm", "tool", "message", "step"]
+StepStatus = Literal["ok", "error"]
+
+
+class StepObservability(TypedDict):
+    node_id: str
+    action_type: str
+    type: str | None
+    kind: StepKind
+    status: StepStatus
+    input_tokens: int
+    output_tokens: int
+    cache_read_tokens: int
+    cache_write_tokens: int
+    words_created: int
+    duration_ms: int | None
+
+
+class RunObservabilitySummary(TypedDict):
+    run_id: str
+    step_count: int
+    llm_call_count: int
+    tool_call_count: int
+    error_count: int
+    total_input_tokens: int
+    total_output_tokens: int
+    total_cache_read_tokens: int
+    total_cache_write_tokens: int
+    total_words_created: int
+    total_duration_ms: int
+    steps: list[StepObservability]
+
+
+class RunInspection(TypedDict, total=False):
+    run: RunModel
+    nodes: list[Node]
+    observability: RunObservabilitySummary
+    operational_graph: OperationalGraphResponse | None
+
+
 class AgentList(TypedDict):
     data: list[Agent]
     next_cursor: str | None

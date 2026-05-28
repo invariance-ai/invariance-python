@@ -72,6 +72,107 @@ def test_runs_operational_graph_hits_expected_path():
     assert graph["entities"][0]["kind"] == "business_object"
 
 
+def test_runs_inspect_returns_observability_summary():
+    seen_paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_paths.append(str(request.url))
+        if request.method == "GET" and request.url.path == "/v1/runs/run_1":
+            return httpx.Response(
+                200,
+                json={
+                    "run": {
+                        "id": "run_1",
+                        "agent_id": "a_1",
+                        "name": "demo",
+                        "status": "completed",
+                        "metadata": {},
+                        "created_at": "2026-05-28T00:00:00Z",
+                        "updated_at": "2026-05-28T00:00:00Z",
+                        "closed_at": "2026-05-28T00:01:00Z",
+                    }
+                },
+            )
+        if request.method == "GET" and request.url.path == "/v1/runs/run_1/nodes":
+            assert request.url.params["limit"] == "25"
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "id": "node_llm",
+                            "run_id": "run_1",
+                            "agent_id": "a_1",
+                            "parent_id": None,
+                            "action_type": "llm.complete",
+                            "type": "llm_call",
+                            "input": None,
+                            "output": {"text": "Created useful observability output."},
+                            "error": None,
+                            "metadata": {
+                                "llm": {
+                                    "input_tokens": 100,
+                                    "output_tokens": 25,
+                                    "cache_read_tokens": 5,
+                                },
+                                "words_created": 4,
+                            },
+                            "custom_fields": {},
+                            "timestamp": 1,
+                            "duration_ms": 250,
+                            "hash": "h1",
+                            "previous_hashes": [],
+                            "signature": None,
+                            "created_at": "2026-05-28T00:00:00Z",
+                            "handoff_from": None,
+                            "handoff_to": None,
+                            "handoff_reason": None,
+                        },
+                        {
+                            "id": "node_tool",
+                            "run_id": "run_1",
+                            "agent_id": "a_1",
+                            "parent_id": "node_llm",
+                            "action_type": "stripe.refunds.create",
+                            "type": "tool_call",
+                            "input": {},
+                            "output": {},
+                            "error": None,
+                            "metadata": {"tool_name": "stripe.refunds.create"},
+                            "custom_fields": {},
+                            "timestamp": 2,
+                            "duration_ms": 125,
+                            "hash": "h2",
+                            "previous_hashes": ["h1"],
+                            "signature": None,
+                            "created_at": "2026-05-28T00:00:01Z",
+                            "handoff_from": None,
+                            "handoff_to": None,
+                            "handoff_reason": None,
+                        },
+                    ],
+                    "next_cursor": None,
+                },
+            )
+        return httpx.Response(404, json={"error": {"code": "nf", "message": "nf"}})
+
+    inv = _inv_with_handler(handler)
+    result = inv.runs.inspect("run_1", limit=25, include_operational_graph=False)
+
+    assert result["run"]["id"] == "run_1"
+    assert result["observability"]["step_count"] == 2
+    assert result["observability"]["llm_call_count"] == 1
+    assert result["observability"]["tool_call_count"] == 1
+    assert result["observability"]["total_input_tokens"] == 100
+    assert result["observability"]["total_output_tokens"] == 25
+    assert result["observability"]["total_cache_read_tokens"] == 5
+    assert result["observability"]["total_words_created"] == 4
+    assert result["observability"]["total_duration_ms"] == 375
+    assert [step["kind"] for step in result["observability"]["steps"]] == ["llm", "tool"]
+    assert result["operational_graph"] is None
+    assert any("/v1/runs/run_1/nodes?limit=25" in path for path in seen_paths)
+
+
 def test_findings_update_posts_status():
     seen = {}
 

@@ -60,6 +60,14 @@ After the run completes, fetch it from the SDK:
 ```python
 fetched = inv.runs.get(run.run_id)
 nodes = inv.nodes.list(run.run_id)
+inspection = inv.runs.inspect(run.run_id)
+print(inspection["observability"])
+# {
+#   "step_count": ..., "llm_call_count": ..., "tool_call_count": ...,
+#   "total_input_tokens": ..., "total_output_tokens": ...,
+#   "total_words_created": ...,
+#   "steps": [{"node_id": ..., "action_type": ..., "kind": ...}],
+# }
 ```
 
 An async client is also available as `AsyncInvariance` from `invariance`. The matching CLI (`inv runs inspect`, `inv nodes tail`) lives in the [`invariance-cli`](../invariance-cli) package.
@@ -159,7 +167,7 @@ use stable `workflow_key`, `case_id`, `run_id`, `agent_source`, `repo`, and
 
 | Resource | Purpose |
 | --- | --- |
-| `inv.runs` | Start, list, get, verify runs. |
+| `inv.runs` | Start, list, get, inspect, verify runs. |
 | `inv.nodes` | Write nodes (trace events) and list them by run. |
 | `inv.monitors` | Create, update, and evaluate simple monitors. |
 | `inv.signals` | List and acknowledge monitor-emitted signals. |

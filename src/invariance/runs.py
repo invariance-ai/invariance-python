@@ -5,12 +5,13 @@ import threading
 import traceback
 from typing import Any
 
-from ._types import OperationalGraphResponse, RunList
+from ._types import NodeList, OperationalGraphResponse, RunInspection, RunList
 from .client import HttpClient
 from .config import Features
 from ._internal import build_node_body, now_ms as _now_ms, random_node_id as _random_node_id
 from ._query import with_query
 from .handoff_token import HandoffToken, build_handoff_token
+from .observability import summarize_run_observability
 from .signals import SignalsResource
 
 
@@ -456,6 +457,35 @@ class RunsResource:
     def get(self, id: str) -> Run:
         res = self._http.get(f"/v1/runs/{id}")
         return Run(self._http, res["run"], self._signing_key)
+
+    def inspect(
+        self,
+        run_id: str,
+        *,
+        limit: int = 200,
+        include_operational_graph: bool = True,
+    ) -> RunInspection:
+        """Fetch an agent-readable inspection bundle for a run.
+
+        Returns ``run``, recent ``nodes``, and an ``observability`` summary with
+        tool calls, LLM/token usage, generated words, latency, and errors. This
+        mirrors ``inv run inspect`` and the TypeScript SDK ``runs.inspect``.
+        """
+        run = self._http.get(f"/v1/runs/{run_id}")["run"]
+        nodes_page: NodeList = self._http.get(with_query(f"/v1/runs/{run_id}/nodes", limit=limit))
+        nodes = nodes_page.get("data", [])
+        graph = None
+        if include_operational_graph:
+            try:
+                graph = self.operational_graph(run_id)
+            except Exception:
+                graph = None
+        return {
+            "run": run,
+            "nodes": nodes,
+            "observability": summarize_run_observability(run_id, nodes),
+            "operational_graph": graph,
+        }
 
     def operational_graph(self, run_id: str) -> "OperationalGraphResponse":
         """Fetch the operational graph for a run — entities, edges, findings,
