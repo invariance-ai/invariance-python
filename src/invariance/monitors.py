@@ -260,6 +260,7 @@ class MonitorsResource:
         name: str | None = None,
         description: str | None = None,
         enabled: bool | None = None,
+        mode: str | None = None,
         evaluator: dict[str, Any] | None = None,
         schedule: dict[str, Any] | None = None,
         creates_review: bool | None = None,
@@ -272,6 +273,8 @@ class MonitorsResource:
             patch["description"] = description
         if enabled is not None:
             patch["enabled"] = enabled
+        if mode is not None:
+            patch["mode"] = mode
         if evaluator is not None:
             patch["evaluator"] = evaluator
         if schedule is not None:
@@ -309,6 +312,38 @@ class MonitorsResource:
             body["limit"] = limit
         return self._http.post(f"/v1/monitors/{id}/evaluate", json=body)
 
+    def preview_target(
+        self,
+        *,
+        target: dict[str, Any] | None = None,
+        monitor_id: str | None = None,
+        sample_limit: int | None = None,
+    ) -> dict[str, Any]:
+        """Dry-run a target against history. Never writes signals/findings/reviews."""
+        body: dict[str, Any] = {}
+        if target is not None:
+            body["target"] = target
+        if monitor_id is not None:
+            body["monitor_id"] = monitor_id
+        if sample_limit is not None:
+            body["sample_limit"] = sample_limit
+        return self._http.post("/v1/monitors/preview-target", json=body)
+
+    def preview_evaluator(
+        self,
+        *,
+        evaluator: dict[str, Any],
+        target: dict[str, Any] | None = None,
+        sample_limit: int | None = None,
+    ) -> dict[str, Any]:
+        """Dry-run an evaluator against history. Returns per-node match results."""
+        body: dict[str, Any] = {"evaluator": evaluator}
+        if target is not None:
+            body["target"] = target
+        if sample_limit is not None:
+            body["sample_limit"] = sample_limit
+        return self._http.post("/v1/monitors/preview-evaluator", json=body)
+
     def executions(
         self,
         id: str,
@@ -330,3 +365,77 @@ class MonitorsResource:
         return self._http.get(
             with_query(f"/v1/monitors/{id}/findings", cursor=cursor, limit=limit)
         )
+
+
+class MonitorRoutesResource:
+    """CRUD + test for monitor delivery routes (webhook / slack_webhook)."""
+
+    def __init__(self, http: HttpClient) -> None:
+        self._http = http
+
+    def create(
+        self,
+        *,
+        target_type: str,
+        config: dict[str, Any],
+        events: list[str],
+        monitor_id: str | None = None,
+        enabled: bool | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "target_type": target_type,
+            "config": config,
+            "events": events,
+        }
+        if monitor_id is not None:
+            body["monitor_id"] = monitor_id
+        if enabled is not None:
+            body["enabled"] = enabled
+        res = self._http.post("/v1/monitor-routes", json=body)
+        return res["route"]
+
+    def list(
+        self,
+        *,
+        monitor_id: str | None = None,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        return self._http.get(
+            with_query("/v1/monitor-routes", monitor_id=monitor_id, cursor=cursor, limit=limit)
+        )
+
+    def get(self, id: str) -> dict[str, Any]:
+        res = self._http.get(f"/v1/monitor-routes/{id}")
+        return res["route"]
+
+    def update(
+        self,
+        id: str,
+        *,
+        target_type: str | None = None,
+        config: dict[str, Any] | None = None,
+        events: list[str] | None = None,
+        monitor_id: str | None = None,
+        enabled: bool | None = None,
+    ) -> dict[str, Any]:
+        patch: dict[str, Any] = {}
+        if target_type is not None:
+            patch["target_type"] = target_type
+        if config is not None:
+            patch["config"] = config
+        if events is not None:
+            patch["events"] = events
+        if monitor_id is not None:
+            patch["monitor_id"] = monitor_id
+        if enabled is not None:
+            patch["enabled"] = enabled
+        res = self._http.patch(f"/v1/monitor-routes/{id}", json=patch)
+        return res["route"]
+
+    def delete(self, id: str) -> None:
+        self._http.delete(f"/v1/monitor-routes/{id}")
+
+    def test(self, id: str) -> dict[str, Any]:
+        """Fire a synthetic payload through the route to verify delivery."""
+        return self._http.post(f"/v1/monitor-routes/{id}/test", json={})

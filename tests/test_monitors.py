@@ -229,3 +229,47 @@ def test_monitors_delete_sends_delete_and_handles_204():
     result = inv.monitors.delete("mon_42")
     assert result is None
     assert seen == {"method": "DELETE", "path": "/v1/monitors/mon_42"}
+
+
+def test_monitors_update_forwards_mode():
+    seen: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"monitor": {"id": "mon_1"}})
+
+    inv = _client_with_handler(handler)
+    inv.monitors.update("mon_1", mode="shadow")
+    assert seen["body"] == {"mode": "shadow"}
+
+
+def test_monitors_preview_target_and_evaluator_post_to_preview_endpoints():
+    calls: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append({"method": request.method, "path": request.url.path})
+        return httpx.Response(200, json={"run_ids": [], "node_ids": [], "counts": {"runs": 0, "nodes": 0}, "truncated": False, "sampled": 0, "matched": 0, "matches": []})
+
+    inv = _client_with_handler(handler)
+    inv.monitors.preview_target(target={"kind": "current_run"}, sample_limit=20)
+    inv.monitors.preview_evaluator(evaluator={"type": "keyword", "field": "output", "keywords": ["x"]})
+    assert calls[0] == {"method": "POST", "path": "/v1/monitors/preview-target"}
+    assert calls[1] == {"method": "POST", "path": "/v1/monitors/preview-evaluator"}
+
+
+def test_monitor_routes_create_and_test():
+    calls: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append({"method": request.method, "path": request.url.path})
+        return httpx.Response(200, json={"route": {"id": "mrte_1"}, "attempts": []})
+
+    inv = _client_with_handler(handler)
+    inv.monitor_routes.create(
+        target_type="slack_webhook",
+        config={"url": "https://s/x"},
+        events=["finding.created"],
+    )
+    inv.monitor_routes.test("mrte_1")
+    assert calls[0] == {"method": "POST", "path": "/v1/monitor-routes"}
+    assert calls[1] == {"method": "POST", "path": "/v1/monitor-routes/mrte_1/test"}

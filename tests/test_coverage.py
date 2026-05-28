@@ -34,6 +34,7 @@ IN_SCOPE_RESOURCES = [
     "dna",
     "cortex",
     "monitors",
+    "monitor_routes",
     "signals",
     "findings",
     "reviews",
