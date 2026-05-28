@@ -9,6 +9,7 @@ from .agents import AgentsResource
 from .trace import trace
 from .monitors import (
     MonitorsResource,
+    MonitorRoutesResource,
     MonitorSpec,
     compile_monitor,
     on,
@@ -58,6 +59,7 @@ from .async_client import (
     AsyncMemoryResource,
     AsyncMetricsResource,
     AsyncMonitorsResource,
+    AsyncMonitorRoutesResource,
     AsyncNarrativesResource,
     AsyncNodesResource,
     AsyncNodeTypesResource,
@@ -106,6 +108,7 @@ __all__ = [
     "AsyncNodesResource",
     "AsyncAgentsResource",
     "AsyncMonitorsResource",
+    "AsyncMonitorRoutesResource",
     "AsyncSignalsResource",
     "AsyncProofsResource",
     "AsyncFindingsResource",
@@ -114,6 +117,7 @@ __all__ = [
     "NodesResource",
     "AgentsResource",
     "MonitorsResource",
+    "MonitorRoutesResource",
     "MonitorSpec",
     "compile_monitor",
     "on",
@@ -205,6 +209,7 @@ class Invariance:
         self.nodes = NodesResource(self._http)
         self.agents = AgentsResource(self._http)
         self.monitors = MonitorsResource(self._http)
+        self.monitor_routes = MonitorRoutesResource(self._http)
         self.signals = SignalsResource(self._http)
         self.proofs = ProofsResource(self._http)
         self.findings = FindingsResource(self._http)
