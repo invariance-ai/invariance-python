@@ -642,6 +642,7 @@ class AsyncMonitorsResource:
         name: str | None = None,
         description: str | None = None,
         enabled: bool | None = None,
+        mode: str | None = None,
         evaluator: dict[str, Any] | None = None,
         schedule: dict[str, Any] | None = None,
         creates_review: bool | None = None,
@@ -654,6 +655,8 @@ class AsyncMonitorsResource:
             patch["description"] = description
         if enabled is not None:
             patch["enabled"] = enabled
+        if mode is not None:
+            patch["mode"] = mode
         if evaluator is not None:
             patch["evaluator"] = evaluator
         if schedule is not None:
@@ -691,6 +694,36 @@ class AsyncMonitorsResource:
             body["limit"] = limit
         return await self._http.post(f"/v1/monitors/{id}/evaluate", json=body)
 
+    async def preview_target(
+        self,
+        *,
+        target: dict[str, Any] | None = None,
+        monitor_id: str | None = None,
+        sample_limit: int | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {}
+        if target is not None:
+            body["target"] = target
+        if monitor_id is not None:
+            body["monitor_id"] = monitor_id
+        if sample_limit is not None:
+            body["sample_limit"] = sample_limit
+        return await self._http.post("/v1/monitors/preview-target", json=body)
+
+    async def preview_evaluator(
+        self,
+        *,
+        evaluator: dict[str, Any],
+        target: dict[str, Any] | None = None,
+        sample_limit: int | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"evaluator": evaluator}
+        if target is not None:
+            body["target"] = target
+        if sample_limit is not None:
+            body["sample_limit"] = sample_limit
+        return await self._http.post("/v1/monitors/preview-evaluator", json=body)
+
     async def executions(
         self,
         id: str,
@@ -712,6 +745,75 @@ class AsyncMonitorsResource:
         return await self._http.get(
             with_query(f"/v1/monitors/{id}/findings", cursor=cursor, limit=limit)
         )
+
+
+class AsyncMonitorRoutesResource:
+    """CRUD + test for monitor delivery routes (webhook / slack_webhook)."""
+
+    def __init__(self, http: AsyncHttpClient) -> None:
+        self._http = http
+
+    async def create(
+        self,
+        *,
+        target_type: str,
+        config: dict[str, Any],
+        events: list[str],
+        monitor_id: str | None = None,
+        enabled: bool | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"target_type": target_type, "config": config, "events": events}
+        if monitor_id is not None:
+            body["monitor_id"] = monitor_id
+        if enabled is not None:
+            body["enabled"] = enabled
+        res = await self._http.post("/v1/monitor-routes", json=body)
+        return res["route"]
+
+    async def list(
+        self,
+        *,
+        monitor_id: str | None = None,
+        cursor: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        return await self._http.get(
+            with_query("/v1/monitor-routes", monitor_id=monitor_id, cursor=cursor, limit=limit)
+        )
+
+    async def get(self, id: str) -> dict[str, Any]:
+        res = await self._http.get(f"/v1/monitor-routes/{id}")
+        return res["route"]
+
+    async def update(
+        self,
+        id: str,
+        *,
+        target_type: str | None = None,
+        config: dict[str, Any] | None = None,
+        events: list[str] | None = None,
+        monitor_id: str | None = None,
+        enabled: bool | None = None,
+    ) -> dict[str, Any]:
+        patch: dict[str, Any] = {}
+        if target_type is not None:
+            patch["target_type"] = target_type
+        if config is not None:
+            patch["config"] = config
+        if events is not None:
+            patch["events"] = events
+        if monitor_id is not None:
+            patch["monitor_id"] = monitor_id
+        if enabled is not None:
+            patch["enabled"] = enabled
+        res = await self._http.patch(f"/v1/monitor-routes/{id}", json=patch)
+        return res["route"]
+
+    async def delete(self, id: str) -> None:
+        await self._http.delete(f"/v1/monitor-routes/{id}")
+
+    async def test(self, id: str) -> dict[str, Any]:
+        return await self._http.post(f"/v1/monitor-routes/{id}/test", json={})
 
 
 class AsyncSignalsResource:
@@ -2606,6 +2708,7 @@ class AsyncInvariance:
         self.nodes = AsyncNodesResource(self._http)
         self.agents = AsyncAgentsResource(self._http)
         self.monitors = AsyncMonitorsResource(self._http)
+        self.monitor_routes = AsyncMonitorRoutesResource(self._http)
         self.signals = AsyncSignalsResource(self._http)
         self.proofs = AsyncProofsResource(self._http)
         self.findings = AsyncFindingsResource(self._http)
