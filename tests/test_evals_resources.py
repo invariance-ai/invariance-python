@@ -134,6 +134,29 @@ def test_cases_create_and_from_run_and_list():
     assert calls[2]["path"] == "/v1/eval-suites/su_1/cases"
 
 
+def test_cases_from_run_forwards_signal_and_finding_provenance():
+    calls: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content) if request.content else None
+        calls.append({"path": request.url.path, "body": body})
+        return httpx.Response(201, json={"case": {"id": "ec_3", "source_signal_id": "sig_1"}})
+
+    inv = _inv_with_handler(handler)
+    created = inv.evals.cases.create_from_run(
+        "su_1",
+        source_run_id="run_x",
+        source_signal_id="sig_1",
+        source_finding_id="fnd_1",
+    )
+    assert created["source_signal_id"] == "sig_1"
+    assert calls[0]["body"] == {
+        "source_run_id": "run_x",
+        "source_finding_id": "fnd_1",
+        "source_signal_id": "sig_1",
+    }
+
+
 def test_eval_runs_get_and_results():
     seen: list[str] = []
 

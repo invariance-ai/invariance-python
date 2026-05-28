@@ -132,6 +132,29 @@ The SDK is run-first:
 4. Finish the run (automatic via context manager).
 5. Optionally verify the proof chain.
 
+## Eyes workflow starter
+
+For Claude Code, Codex, MCP tools, and other tool-calling agents, use one
+workflow case per user-facing task. That gives Eyes one place to join the
+agent trace, workflow events, human reviews, dashboards, Cortex analysis, and
+eval datasets.
+
+The launch template is in [`examples/eyes_workflow.py`](./examples/eyes_workflow.py).
+It does the full setup:
+
+- creates a workflow definition for agent code-change tasks;
+- opens a case and starts an auto-linked run;
+- records context, tool calls, and decisions as searchable nodes;
+- emits a workflow event with run evidence;
+- creates a monitor that opens human reviews when a decision asks for one;
+- persists dashboard views such as task usage by action and outcomes by workflow;
+- asks Cortex for dashboard suggestions when `INVARIANCE_PROJECT_ID` is set;
+- seeds an eval dataset and suite from the observed run.
+
+The same pattern works whether the trace came from the SDK, CLI, or MCP server:
+use stable `workflow_key`, `case_id`, `run_id`, `agent_source`, `repo`, and
+`ticket` fields so dashboards and evals can group the work without custom joins.
+
 ## API surface
 
 | Resource | Purpose |
@@ -159,6 +182,47 @@ The SDK is run-first:
 | `inv.receipts` | External side-effect receipts — `create` / `create_batch` / `list` / `get`. |
 | `inv.workflow_observability` | Read-only workflow rollups + per-execution health. |
 | `inv.metrics` | Usage + cost rollups — `overview` / `agents`. |
+
+### Eval datasets
+
+Datasets are first-class objects under `inv.evals.datasets`. Store examples as
+`input`, `expected`, and `metadata`, then attach them to suites and cases:
+
+```python
+dataset = inv.evals.datasets.create(
+    name="agent-code-change-regression",
+    metadata={"workflow_key": "agent.code_change"},
+)
+
+example = inv.evals.datasets.append_example(
+    dataset["id"],
+    input={"prompt": "Add observability to the workflow."},
+    expected={
+        "assertions": [
+            {"path": '$.nodes[?(@.action_type=="tool_call")]', "op": "present"}
+        ]
+    },
+    metadata={"source_run_id": run_id},
+)
+
+suite = inv.evals.suites.create(
+    name="Agent workflow regression",
+    target_type="graph",
+    dataset_id=dataset["id"],
+)
+
+inv.evals.cases.create(
+    suite["id"],
+    name="tool usage is traced",
+    dataset_example_id=example["id"],
+    source_run_id=run_id,
+    expected=example["expected"],
+)
+```
+
+Use `inv.evals.cases.create_from_run(...)` when a production run should become
+a golden regression case, and `inv.evals.suites.run(...)` /
+`inv.evals.eval_runs.list_results(...)` for suite execution results.
 
 ### Operations
 
@@ -224,6 +288,11 @@ health = inv.workflow_observability.executions("mortgage.refi")["data"]
 overview = inv.metrics.overview(window_hours=168)
 usage = inv.metrics.agents()
 ```
+
+Saved views store structured query specs over `executions`, `events`, `runs`,
+`nodes`, or `captures`. They are SQL-like in shape (`filters`, `group_by`,
+`aggregation`, `order_by`, `limit`) but stored as governed JSON so the dashboard,
+CLI, MCP server, and SDKs can all render the same view.
 
 The identical surface is on `AsyncInvariance`:
 

@@ -1731,6 +1731,8 @@ class AsyncCasesResource:
         *,
         source_run_id: str,
         name: str | None = None,
+        source_finding_id: str | None = None,
+        source_signal_id: str | None = None,
         mutations: list[dict[str, Any]] | None = None,
         expected: dict[str, Any] | None = None,
         assertions: list[dict[str, Any]] | None = None,
@@ -1739,6 +1741,10 @@ class AsyncCasesResource:
         body: dict[str, Any] = {"source_run_id": source_run_id}
         if name is not None:
             body["name"] = name
+        if source_finding_id is not None:
+            body["source_finding_id"] = source_finding_id
+        if source_signal_id is not None:
+            body["source_signal_id"] = source_signal_id
         if mutations is not None:
             body["mutations"] = mutations
         if expected is not None:

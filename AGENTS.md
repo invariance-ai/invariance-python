@@ -48,6 +48,25 @@ Notes:
 - Per-run context belongs in `metadata=` at `runs.start(...)`; there is no `run.context(...)` method.
 - There is no `run.log(...)`. Use `run.step(action_type, ...)` for every traced event. Other Run methods: `handoff()`, `signal()`, `flush()`, `finish()`, `fail()`, `verify()`.
 
+## Default Eyes workflow for coding agents
+
+For Claude Code, Codex, MCP tools, and SDK-based agents, prefer the Eyes
+workflow template in [`examples/eyes_workflow.py`](./examples/eyes_workflow.py).
+It is the default shape for launch-ready observability:
+
+1. Create or reuse a `workflow_definitions` record for the task family.
+2. Create a `cases` workflow instance with `repo`, `ticket`, `agent_source`, `tenant_id`, and `end_user_id`.
+3. Start every task run inside `with inv.cases.with_case(case):` so `case_id`, `tenant_id`, and `end_user_id` are stamped automatically.
+4. Emit `context`, `tool_call`, `llm_call`, `decision`, `handoff`, and `observation` nodes with small JSON payloads.
+5. Emit workflow events for user-visible milestones using `inv.events.create(case["id"], ...)`.
+6. Create monitors with `action.create_review()` for any condition that needs a human decision.
+7. Persist saved views for usage, outcomes, review volume, and agent source coverage.
+8. Ask Cortex for dashboard suggestions with `inv.cortex.ask(...)` when `INVARIANCE_PROJECT_ID` is available.
+9. Promote useful production runs into eval datasets via `inv.evals.datasets`, `inv.evals.suites`, and `inv.evals.cases.create_from_run(...)`.
+
+Use this as the default template unless the host app already owns a stronger
+workflow model.
+
 ## Agent recipe: async
 
 ```python
@@ -132,6 +151,48 @@ inv.metrics.agents()
 ```
 
 All of the above work identically on `AsyncInvariance` with `await`.
+
+## Agent recipe: eval datasets
+
+Create datasets from either hand-authored golden tasks or real production runs:
+
+```python
+dataset = inv.evals.datasets.create(
+    name="agent-code-change-regression",
+    metadata={"workflow_key": "agent.code_change"},
+)
+
+inv.evals.datasets.append_example(
+    dataset["id"],
+    input={"prompt": "Refactor auth middleware safely."},
+    expected={
+        "assertions": [
+            {"path": '$.nodes[?(@.action_type=="tool_call")]', "op": "present"}
+        ]
+    },
+    metadata={"source": "human_review"},
+)
+
+suite = inv.evals.suites.create(
+    name="Agent workflow regression",
+    target_type="graph",
+    dataset_id=dataset["id"],
+)
+
+inv.evals.cases.create_from_run(
+    suite["id"],
+    source_run_id=run.run_id,
+    expected={
+        "assertions": [
+            {"path": '$.events[?(@.type=="instrumentation.completed")]', "op": "present"}
+        ]
+    },
+)
+```
+
+Use `metadata` to store `workflow_key`, `repo`, `ticket`, `agent_source`,
+review outcome, and source run IDs. That is what lets Eyes connect production
+workflow traces to regression suites later.
 
 ## Ask Cortex (read-only analyst)
 
