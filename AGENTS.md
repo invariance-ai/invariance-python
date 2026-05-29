@@ -62,7 +62,7 @@ It is the default shape for launch-ready observability:
 6. Create monitors with `action.create_review()` for any condition that needs a human decision.
 7. Persist saved views for usage, outcomes, review volume, and agent source coverage.
 8. Ask Cortex for dashboard suggestions with `inv.cortex.ask(...)` when `INVARIANCE_PROJECT_ID` is available.
-9. Promote useful production runs into eval datasets via `inv.evals.datasets`, `inv.evals.suites`, and `inv.evals.cases.create_from_run(...)`.
+9. Promote useful tasks into runnable eval datasets with `inv.evals.seed_suite(...)`; use `inv.evals.cases.create_from_run(...)` only when you are attaching a production run to an existing suite.
 
 Use this as the default template unless the host app already owns a stronger
 workflow model.
@@ -155,6 +155,27 @@ All of the above work identically on `AsyncInvariance` with `await`.
 ## Agent recipe: eval datasets
 
 Create datasets from either hand-authored golden tasks or real production runs:
+
+```python
+seeded = inv.evals.seed_suite(
+    name="agent-code-change-regression",
+    run=True,
+    rows=[
+        {
+            "name": "tool usage is traced",
+            "input": {"prompt": "Refactor auth middleware safely."},
+            "expected": {
+                "assertions": [
+                    {"path": '$.nodes[?(@.action_type=="tool_call")]', "op": "present"}
+                ]
+            },
+            "metadata": {"source": "human_review"},
+        }
+    ],
+)
+```
+
+Use lower-level calls when attaching rows to existing suites:
 
 ```python
 dataset = inv.evals.datasets.create(

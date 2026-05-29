@@ -115,6 +115,8 @@ from ._types import (
     RunInspection,
     RunProof,
     ScorerSpec,
+    SeedEvalSuiteResult,
+    SeedEvalSuiteRow,
     Severity,
     Signal,
     SignalList,
@@ -1827,6 +1829,92 @@ class AsyncEvalsResource:
         self.cases = AsyncCasesResource(http)
         self.eval_runs = AsyncEvalRunsResource(http)
         self.experiments = AsyncExperimentsResource(http)
+
+    async def seed_suite(
+        self,
+        *,
+        name: str,
+        rows: list[SeedEvalSuiteRow],
+        suite_name: str | None = None,
+        description: str | None = None,
+        target_type: EvalTargetType = "custom",
+        metadata: dict[str, Any] | None = None,
+        run: bool = False,
+    ) -> SeedEvalSuiteResult:
+        """Create a dataset, linked suite, cases, and optionally start the suite."""
+        if not rows:
+            raise ValueError("seed_suite requires at least one row")
+        if suite_name is None or suite_name == name:
+            seeded: SeedEvalSuiteResult = await self._http.post(
+                "/v1/eval-datasets/seed-suite",
+                json={
+                    "name": name,
+                    "description": description,
+                    "target_type": target_type,
+                    "dataset_metadata": metadata,
+                    "suite_metadata": metadata,
+                    "rows": [
+                        {
+                            "name": row.get("name") or f"case-{i:03d}",
+                            "input": row["input"],
+                            "expected": row.get("expected"),
+                            "assertions": row.get("assertions"),
+                            "mutations": row.get("mutations"),
+                            "metadata": row.get("metadata"),
+                        }
+                        for i, row in enumerate(rows, start=1)
+                    ],
+                    "run": run,
+                },
+            )
+            seeded["id"] = seeded["suite"]["id"]
+            seeded["dataset_id"] = seeded["dataset"]["id"]
+            seeded["suite_id"] = seeded["suite"]["id"]
+            seeded["case_count"] = len(seeded.get("cases", []))
+            return seeded
+        dataset = await self.datasets.create(name=name, description=description, metadata=metadata)
+        suite = await self.suites.create(
+            name=suite_name or name,
+            description=description,
+            target_type=target_type,
+            dataset_id=dataset["id"],
+            metadata=metadata,
+        )
+        examples: list[EvalDatasetExample] = []
+        cases: list[EvalCase] = []
+        for i, row in enumerate(rows, start=1):
+            example = await self.datasets.append_example(
+                dataset["id"],
+                input=row["input"],
+                expected=row.get("expected"),
+                metadata=row.get("metadata"),
+            )
+            examples.append(example)
+            cases.append(
+                await self.cases.create(
+                    suite["id"],
+                    name=row.get("name") or f"case-{i:03d}",
+                    dataset_example_id=example["id"],
+                    input_bundle=row["input"],
+                    expected=row.get("expected"),
+                    assertions=row.get("assertions"),
+                    mutations=row.get("mutations"),
+                    metadata=row.get("metadata"),
+                )
+            )
+        result: SeedEvalSuiteResult = {
+            "dataset": dataset,
+            "suite": suite,
+            "examples": examples,
+            "cases": cases,
+            "id": suite["id"],
+            "dataset_id": dataset["id"],
+            "suite_id": suite["id"],
+            "case_count": len(cases),
+        }
+        if run:
+            result["eval_run"] = await self.suites.run(suite["id"])
+        return result
 
     async def run_case(
         self,

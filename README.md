@@ -197,6 +197,33 @@ Datasets are first-class objects under `inv.evals.datasets`. Store examples as
 `input`, `expected`, and `metadata`, then attach them to suites and cases:
 
 ```python
+seeded = inv.evals.seed_suite(
+    name="agent-code-change-regression",
+    run=True,
+    rows=[
+        {
+            "name": "tool usage is traced",
+            "input": {"prompt": "Add observability to the workflow."},
+            "expected": {
+                "assertions": [
+                    {"path": '$.nodes[?(@.action_type=="tool_call")]', "op": "present"}
+                ]
+            },
+            "mutations": [
+                {"kind": "replace_prompt", "value": "Add observability and include tool spans."}
+            ],
+            "metadata": {"source_run_id": run_id},
+        }
+    ],
+)
+
+print(seeded["dataset_id"], seeded["suite_id"], seeded.get("eval_run", {}).get("id"))
+```
+
+Use the lower-level resource calls when you need to attach rows to an existing
+dataset or suite:
+
+```python
 dataset = inv.evals.datasets.create(
     name="agent-code-change-regression",
     metadata={"workflow_key": "agent.code_change"},

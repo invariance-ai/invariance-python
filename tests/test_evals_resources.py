@@ -157,6 +157,143 @@ def test_cases_from_run_forwards_signal_and_finding_provenance():
     }
 
 
+def test_seed_suite_posts_to_server_seed_suite_endpoint():
+    calls: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content) if request.content else None
+        calls.append({"method": request.method, "path": request.url.path, "body": body})
+        if request.url.path == "/v1/eval-datasets/seed-suite":
+            return httpx.Response(
+                201,
+                json={
+                    "dataset": {"id": "ds_1", "name": body["name"]},
+                    "suite": {"id": "su_1", "name": body["name"]},
+                    "examples": [{"id": "ex_1"}, {"id": "ex_2"}],
+                    "cases": [{"id": "ec_1"}, {"id": "ec_2"}],
+                    "eval_run": {"id": "erun_1", "status": "queued"},
+                },
+            )
+        return httpx.Response(404)
+
+    inv = _inv_with_handler(handler)
+    seeded = inv.evals.seed_suite(
+        name="refund-regression",
+        run=True,
+        rows=[
+            {
+                "name": "approved",
+                "input": {"prompt": "approve refund"},
+                "expected": {"assertions": [{"path": "outcome", "op": "equals", "value": "approved"}]},
+            },
+            {
+                "input": {"prompt": "deny refund"},
+                "expected": {"assertions": [{"path": "outcome", "op": "equals", "value": "denied"}]},
+                "mutations": [{"kind": "replace_prompt", "value": "deny refund without approval"}],
+            },
+        ],
+    )
+
+    assert [c["path"] for c in calls] == ["/v1/eval-datasets/seed-suite"]
+    assert calls[0]["body"] == {
+        "name": "refund-regression",
+        "description": None,
+        "target_type": "custom",
+        "dataset_metadata": None,
+        "suite_metadata": None,
+        "rows": [
+            {
+                "name": "approved",
+                "input": {"prompt": "approve refund"},
+                "expected": {"assertions": [{"path": "outcome", "op": "equals", "value": "approved"}]},
+                "assertions": None,
+                "mutations": None,
+                "metadata": None,
+            },
+            {
+                "name": "case-002",
+                "input": {"prompt": "deny refund"},
+                "expected": {"assertions": [{"path": "outcome", "op": "equals", "value": "denied"}]},
+                "assertions": None,
+                "mutations": [{"kind": "replace_prompt", "value": "deny refund without approval"}],
+                "metadata": None,
+            },
+        ],
+        "run": True,
+    }
+    assert seeded["dataset_id"] == "ds_1"
+    assert seeded["suite_id"] == "su_1"
+    assert seeded["case_count"] == 2
+    assert seeded["eval_run"]["id"] == "erun_1"
+
+
+def test_seed_suite_with_different_suite_name_falls_back_to_client_orchestration():
+    calls: list[dict] = []
+    example_count = 0
+    case_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal example_count, case_count
+        body = json.loads(request.content) if request.content else None
+        calls.append({"method": request.method, "path": request.url.path, "body": body})
+        if request.url.path == "/v1/eval-datasets":
+            return httpx.Response(201, json={"dataset": {"id": "ds_1", "name": body["name"]}})
+        if request.url.path == "/v1/eval-suites":
+            return httpx.Response(201, json={"suite": {"id": "su_1", "name": body["name"]}})
+        if request.url.path == "/v1/eval-datasets/ds_1/examples":
+            example_count += 1
+            return httpx.Response(
+                201,
+                json={"example": {"id": f"ex_{example_count}", "dataset_id": "ds_1"}},
+            )
+        if request.url.path == "/v1/eval-suites/su_1/cases":
+            case_count += 1
+            return httpx.Response(
+                201,
+                json={"case": {"id": f"ec_{case_count}", "suite_id": "su_1"}},
+            )
+        if request.url.path == "/v1/eval-suites/su_1/run":
+            return httpx.Response(201, json={"eval_run": {"id": "erun_1", "status": "queued"}})
+        return httpx.Response(404)
+
+    inv = _inv_with_handler(handler)
+    seeded = inv.evals.seed_suite(
+        name="refund-regression-dataset",
+        suite_name="refund-regression-suite",
+        run=True,
+        rows=[
+            {
+                "name": "approved",
+                "input": {"prompt": "approve refund"},
+                "expected": {"assertions": [{"path": "outcome", "op": "equals", "value": "approved"}]},
+            },
+        ],
+    )
+
+    assert [c["path"] for c in calls] == [
+        "/v1/eval-datasets",
+        "/v1/eval-suites",
+        "/v1/eval-datasets/ds_1/examples",
+        "/v1/eval-suites/su_1/cases",
+        "/v1/eval-suites/su_1/run",
+    ]
+    assert calls[1]["body"] == {
+        "name": "refund-regression-suite",
+        "target_type": "custom",
+        "dataset_id": "ds_1",
+    }
+    assert calls[3]["body"] == {
+        "name": "approved",
+        "dataset_example_id": "ex_1",
+        "input_bundle": {"prompt": "approve refund"},
+        "expected": {"assertions": [{"path": "outcome", "op": "equals", "value": "approved"}]},
+    }
+    assert seeded["dataset_id"] == "ds_1"
+    assert seeded["suite_id"] == "su_1"
+    assert seeded["case_count"] == 1
+    assert seeded["eval_run"]["id"] == "erun_1"
+
+
 def test_eval_runs_get_and_results():
     seen: list[str] = []
 
@@ -249,3 +386,4 @@ def test_async_evals_has_sub_resources():
     assert hasattr(inv.evals, "cases")
     assert hasattr(inv.evals, "eval_runs")
     assert hasattr(inv.evals, "experiments")
+    assert hasattr(inv.evals, "seed_suite")

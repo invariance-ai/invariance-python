@@ -803,6 +803,27 @@ class EvalResultRowList(TypedDict):
     next_cursor: str | None
 
 
+class SeedEvalSuiteRow(TypedDict, total=False):
+    name: str
+    input: dict[str, Any]
+    expected: dict[str, Any]
+    assertions: list[dict[str, Any]]
+    mutations: list[dict[str, Any]]
+    metadata: dict[str, Any]
+
+
+class SeedEvalSuiteResult(TypedDict, total=False):
+    dataset: EvalDataset
+    suite: EvalSuiteRecord
+    examples: list[EvalDatasetExample]
+    cases: list[EvalCase]
+    eval_run: EvalRunRecord
+    id: str
+    dataset_id: str
+    suite_id: str
+    case_count: int
+
+
 # Experiment + Compare — finalized backend types.
 
 ScorerName = Literal[
